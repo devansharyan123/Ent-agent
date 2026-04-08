@@ -1,7 +1,8 @@
 # backend/services/auth_service.py
 
 from sqlalchemy.orm import Session
-from database import models
+from backend.database import models   
+from backend.database.models import User
 import bcrypt
 
 
