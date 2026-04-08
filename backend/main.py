@@ -25,5 +25,12 @@ def login(username: str, password: str, db: Session = Depends(get_db)):
     return {
         "message": "Login successful",
         "user_id": str(user.id),
+        "username": user.username,
         "role": user.role
     }
+
+
+@app.post("/logout")
+def logout():
+    """Logout endpoint - frontend handles session clearing"""
+    return {"message": "Logout successful"}
