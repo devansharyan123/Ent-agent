@@ -1,48 +1,50 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from uuid import UUID
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, Literal
+
+class BaseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+class UserCreate(BaseSchema):
+    username: str = Field(..., min_length=3, max_length=50)
+    email: EmailStr = Field(...)
+    password: str = Field(..., min_length=6, max_length=100)
+    role: Literal["admin", "hr", "employee"] = Field(...)
 
 
-class UserCreate(BaseModel):
-    username: str
-    email: Optional[EmailStr]
-    password: str
-    role: str
+class UserLogin(BaseSchema):
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=6, max_length=100)
 
 
-class UserResponse(BaseModel):
+class UserResponse(BaseSchema):
     id: UUID
     username: str
-    email: Optional[str]
-    role: str
+    email: EmailStr
+    role: Literal["admin", "hr", "employee"]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
 
-
-class ConversationCreate(BaseModel):
+class ConversationCreate(BaseSchema):
     user_id: UUID
-    title: Optional[str] = "New Conversation"
+    title: str = Field(default="New Conversation", max_length=100)
 
 
-class ConversationResponse(BaseModel):
+class ConversationResponse(BaseSchema):
     id: UUID
     user_id: UUID
     title: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
 
-class MessageCreate(BaseModel):
+class MessageCreate(BaseSchema):
     conversation_id: UUID
-    question: str
-    answer: str
+    question: str = Field(..., min_length=1, max_length=5000)
+    answer: str = Field(..., min_length=1, max_length=10000)
 
 
-class MessageResponse(BaseModel):
+class MessageResponse(BaseSchema):
     id: UUID
     conversation_id: UUID
     sequence_no: int
@@ -50,61 +52,45 @@ class MessageResponse(BaseModel):
     answer: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
 
-class DocumentResponse(BaseModel):
+class DocumentCreate(BaseSchema):
+    file_name: str = Field(..., min_length=3, max_length=255)
+    file_path: str = Field(..., min_length=5, max_length=500)
+    category: Literal["hr", "general"]
+
+
+class DocumentResponse(BaseSchema):
     id: UUID
     file_name: str
     file_path: str
-    category: Optional[str]
+    category: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
 
-class ToolLogCreate(BaseModel):
+class ToolLogCreate(BaseSchema):
     conversation_id: UUID
-    tool_name: str
-    tool_input: Optional[dict]
-    tool_output: Optional[dict]
+    tool_name: str = Field(..., min_length=2, max_length=100)
+    tool_input: Optional[dict] = None
+    tool_output: Optional[dict] = None
 
 
-class ToolLogResponse(BaseModel):
+class ToolLogResponse(BaseSchema):
     id: UUID
     tool_name: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
 
-class QueryCacheResponse(BaseModel):
-    id: UUID
-    user_id: Optional[UUID]
-    query_text: str
-    response_text: Optional[str]
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-class DocumentChunkResponse(BaseModel):
+class DocumentChunkResponse(BaseSchema):
     id: UUID
     document_id: UUID
     chunk_index: int
     chunk_text: str
-    page_number: Optional[int]
+    page_number: Optional[int] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
 
-
-class RagEmbeddingResponse(BaseModel):
+class RagEmbeddingResponse(BaseSchema):
     id: UUID
     chunk_id: UUID
     embedding_model: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
