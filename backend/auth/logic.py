@@ -1,17 +1,15 @@
-# backend/auth/logic.py
-
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from backend.services.auth_service import get_user_by_username, verify_password
 
 
-def login_user(db: Session, username: str, password: str):
-    user = get_user_by_username(db, username)
+async def login_user(db: AsyncSession, username: str, password: str):
+    user = await get_user_by_username(db, username)
 
     if not user:
-        return None, "User not found"
+        return None, "Invalid username or password"
 
     if not verify_password(password, user.password_hash):
-        return None, "Invalid password"
+        return None, "Invalid username or password"
 
     if not user.is_active:
         return None, "User inactive"
@@ -26,4 +24,4 @@ def check_role_access(user_role, required_role):
         "Employee": ["Employee"]
     }
 
-    return required_role in hierarchy[user_role]
+    return required_role in hierarchy.get(user_role, [])
