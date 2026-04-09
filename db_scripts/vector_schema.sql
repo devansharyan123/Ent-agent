@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS vector_store.document_chunks (
     created_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(document_id, chunk_index)
 );
-
+look the embeddings 
 -- EMBEDDINGS
 CREATE TABLE IF NOT EXISTS vector_store.rag_embeddings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
