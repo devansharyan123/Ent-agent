@@ -104,7 +104,6 @@ DATABASE_URL=postgresql://team_user:team1234@172.25.81.163:5432/project_db
 
 # LLM
 LLM_PROVIDER=groq
-GROQ_API_KEY=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
 LLM_MODEL=mixtral-8x7b-32768
 AGENT_TEMPERATURE=0.7
 
