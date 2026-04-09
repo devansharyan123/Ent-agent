@@ -1,15 +1,13 @@
 import uuid
 from sqlalchemy import (
     Column, String, Text, Integer, Boolean,
-    ForeignKey, TIMESTAMP, CheckConstraint, UniqueConstraint
+    ForeignKey, TIMESTAMP, UniqueConstraint
 )
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from database.session import Base
-from sqlalchemy.dialects.postgresql import JSONB
+from backend.database.session import Base
 from pgvector.sqlalchemy import Vector
-
 
 class User(Base):
     __tablename__ = "users"
