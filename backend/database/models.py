@@ -1,15 +1,13 @@
 import uuid
 from sqlalchemy import (
     Column, String, Text, Integer, Boolean,
-    ForeignKey, TIMESTAMP, CheckConstraint, UniqueConstraint
+    ForeignKey, TIMESTAMP, UniqueConstraint
 )
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from backend.database import Base
-from sqlalchemy.dialects.postgresql import JSONB
+from backend.database.session import Base
 from pgvector.sqlalchemy import Vector
-
 
 class User(Base):
     __tablename__ = "users"
@@ -112,6 +110,6 @@ class RagEmbedding(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     chunk_id = Column(UUID(as_uuid=True), ForeignKey("vector_store.document_chunks.id", ondelete="CASCADE"), unique=True)
-    embedding = Column(Vector(1536)) 
+    embedding = Column(Vector(768)) 
     embedding_model = Column(String(100), default="text-embedding-3-small")
     created_at = Column(TIMESTAMP, server_default=func.now())
