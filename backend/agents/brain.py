@@ -1,195 +1,130 @@
-"""Main agent brain/orchestrator"""
-from typing import List, Dict, Any
+"""
+Agent Brain — LangChain/LangGraph ReAct agent.
 
-# Core LangChain & Execution
-from langchain_classic.agents import AgentExecutor, create_react_agent
-from langchain_core.prompts import PromptTemplate
-from langchain_core.tools import Tool  # Moved to langchain_core for stability
+Only one tool is registered: policy_retrieval_tool.
+All other legacy tools (retrieval, summarization, comparison,
+knowledge, recommendation) have been removed; they were unused,
+broken stubs that caused import errors.
+"""
+
+import logging
+from typing import Any, Dict, List, Optional
+
+from langchain_core.tools import tool
 from langchain_groq import ChatGroq
+from langgraph.prebuilt import create_react_agent
 
-# Project-specific imports (ensure your folder structure matches these)
 from backend.config import settings
-from backend.agents.tools.retrieval import retrieval_search
-from backend.agents.tools.summarization import summarization_tool
-from backend.agents.tools.comparison import comparison_tool
-from backend.agents.tools.knowledge import knowledge_lookup
-from backend.agents.tools.recommendation import recommendation_tool
+from backend.agents.tools.policy_retrieval_tool import policy_retrieval_tool as _policy_fn
+
+logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# LangChain @tool wrapper
+# ---------------------------------------------------------------------------
+
+@tool
+def search_policy(query: str, user_role: str = "employee") -> str:
+    """
+    Search company policy documents and return a grounded answer.
+
+    Use this whenever the user asks about any company policy, rule,
+    procedure, leave entitlement, HR guideline, or admin regulation.
+
+    Args:
+        query:     The user's question about company policy.
+        user_role: The role of the requesting user
+                   (admin | hr | employee).  Defaults to 'employee'.
+
+    Returns:
+        JSON string containing: answer, sources, retrieved_chunks.
+    """
+    import json
+    try:
+        result = _policy_fn(query=query, user_role=user_role, top_k=5)
+        return json.dumps(result, ensure_ascii=False)
+    except Exception as exc:
+        logger.error("search_policy tool error: %s", exc)
+        return json.dumps({"answer": f"Tool error: {exc}", "sources": [], "retrieved_chunks": []})
+
+
+# ---------------------------------------------------------------------------
+# AgentBrain
+# ---------------------------------------------------------------------------
 
 class AgentBrain:
-    """Main agent orchestrator for handling user queries"""
+    """Thin orchestrator that wraps the LangGraph ReAct agent."""
 
-    def __init__(self):
-        """Initialize the agent with all tools"""
+    _SYSTEM_PROMPT = (
+        "You are an Enterprise Policy Assistant for Artemis.\n"
+        "Your ONLY authoritative source of information is the search_policy tool.\n\n"
+        "Rules:\n"
+        "1. For any question about company policy, HR rules, leave, payroll, "
+        "   IT security, or admin procedures — call search_policy first.\n"
+        "2. Pass the user's role exactly as received (admin / hr / employee).\n"
+        "3. Never answer from general knowledge; always cite the retrieved policy.\n"
+        "4. If the tool returns no relevant policy, say so explicitly.\n"
+        "5. Format multi-rule answers as bullet points.\n"
+    )
+
+    def __init__(self) -> None:
         self.llm = ChatGroq(
             api_key=settings.groq_api_key,
             model_name=settings.llm_model,
-            temperature=settings.agent_temperature
+            temperature=0.0,
         )
-
-        # Define tools for the agent
-        self.tools = [
-            Tool(
-                name="retrieval_search",
-                func=self._wrap_retrieval,
-                description="Search for relevant document chunks using semantic similarity. Input: query (string) and user_role (admin/hr/employee)"
-            ),
-            Tool(
-                name="summarization",
-                func=self._wrap_summarization,
-                description="Summarize document text. Input: text to summarize"
-            ),
-            Tool(
-                name="comparison",
-                func=self._wrap_comparison,
-                description="Compare multiple documents. Input: comma-separated document IDs"
-            ),
-            Tool(
-                name="knowledge_lookup",
-                func=knowledge_lookup,
-                description="Look up cached answers for similar questions. Input: question text"
-            ),
-            Tool(
-                name="recommendation",
-                func=self._wrap_recommendation,
-                description="Get document recommendations. Input: query text and user_role"
-            ),
-        ]
-
-        # Create the agent
-        self.agent_executor = self._create_agent()
-
-    def _wrap_retrieval(self, query: str) -> str:
-        """Wrapper for retrieval tool"""
-        try:
-            results = retrieval_search(query, user_role="admin", top_k=5)
-            return str(results)
-        except Exception as e:
-            return f"Error in retrieval: {str(e)}"
-
-    def _wrap_summarization(self, text: str) -> str:
-        """Wrapper for summarization tool"""
-        try:
-            result = summarization_tool(text)
-            return result.get("summary", "No summary generated")
-        except Exception as e:
-            return f"Error in summarization: {str(e)}"
-
-    def _wrap_comparison(self, doc_ids: str) -> str:
-        """Wrapper for comparison tool"""
-        try:
-            doc_list = [d.strip() for d in doc_ids.split(",")]
-            result = comparison_tool(doc_list)
-            return result.get("comparison", "No comparison generated")
-        except Exception as e:
-            return f"Error in comparison: {str(e)}"
-
-    def _wrap_recommendation(self, query: str) -> str:
-        """Wrapper for recommendation tool"""
-        try:
-            result = recommendation_tool(query, user_role="admin")
-            recommendations = result.get("recommendations", [])
-            return str([r["filename"] for r in recommendations])
-        except Exception as e:
-            return f"Error in recommendation: {str(e)}"
-
-    def _create_agent(self) -> AgentExecutor:
-        """Create the ReAct agent with tools"""
-        system_prompt = """You are a helpful AI assistant specialized in answering questions about company policies and documents.
-
-You have access to the following tools:
-- retrieval_search: Find relevant documents and information
-- summarization: Summarize long documents
-- comparison: Compare multiple documents
-- knowledge_lookup: Check cached answers
-- recommendation: Get document recommendations
-
-When answering questions:
-1. First try to look up if this question was answered before using knowledge_lookup
-2. If not cached, use retrieval_search to find relevant documents
-3. Use the document information to provide a comprehensive answer
-4. Be precise and reference the source documents
-5. Respect user role-based access control
-
-Always be helpful, accurate, and cite your sources."""
-
-        prompt = PromptTemplate.from_template(
-            template=system_prompt + "\n\n{input}\n\nAgent Scratch Pad:\n{agent_scratchpad}",
-            input_variables=["input", "agent_scratchpad"]
+        self.tools = [search_policy]
+        self._agent = create_react_agent(
+            self.llm,
+            self.tools,
+            prompt=self._SYSTEM_PROMPT,
         )
+        logger.info("AgentBrain initialised with tool: search_policy")
 
-        agent = create_react_agent(self.llm, self.tools, prompt)
-        agent_executor = AgentExecutor.from_agent_and_tools(
-            agent=agent,
-            tools=self.tools,
-            verbose=True,
-            max_iterations=10,
-            handle_parsing_errors=True
-        )
-
-        return agent_executor
-
-    def execute(self, query: str, user_role: str = "employee", conversation_history: List[Dict] = None) -> Dict[str, Any]:
+    def execute(
+        self,
+        query: str,
+        user_role: str = "employee",
+        conversation_history: Optional[List[Dict]] = None,
+    ) -> Dict[str, Any]:
         """
-        Execute a query through the agent.
+        Run the ReAct agent for *query*.
 
         Args:
-            query: User's question
-            user_role: User role for access control
-            conversation_history: Previous messages for context
+            query:                Natural-language question.
+            user_role:            Requesting user's role.
+            conversation_history: Previous messages (unused by the agent
+                                  directly but kept for future multi-turn).
 
         Returns:
-            Agent response with answer and metadata
+            {"status": "success"|"error", "answer": str, "sources": list}
         """
         try:
-            # Build context from conversation history
-            context = ""
-            if conversation_history:
-                context = "\n".join([
-                    f"Q: {msg.get('question')}\nA: {msg.get('answer')}"
-                    for msg in conversation_history[-settings.max_conversation_history:]
-                ])
+            enriched = f"[Role: {user_role}] {query}"
+            result   = self._agent.invoke({"messages": [("user", enriched)]})
 
-            # Prepare the prompt with context
-            full_prompt = f"""User Role: {user_role}
+            # LangGraph returns {"messages": [...]}; last message is the answer
+            messages = result.get("messages", [])
+            answer   = messages[-1].content if messages else "No answer generated."
 
-Previous conversation context:
-{context}
+            return {"status": "success", "answer": answer, "sources": []}
 
-New question: {query}"""
-
-            # Execute the agent
-            response = self.agent_executor.invoke({"input": full_prompt})
-
-            return {
-                "status": "success",
-                "answer": response.get("output", "No answer generated"),
-                "query": query,
-                "user_role": user_role
-            }
-
-        except Exception as e:
-            return {
-                "status": "error",
-                "error": str(e),
-                "query": query,
-                "answer": "Sorry, I encountered an error processing your question."
-            }
+        except Exception as exc:
+            logger.error("AgentBrain.execute failed: %s", exc)
+            return {"status": "error", "answer": str(exc), "sources": []}
 
 
-# Global agent instance
-_agent_instance = None
+# ---------------------------------------------------------------------------
+# Singleton
+# ---------------------------------------------------------------------------
+
+_agent_instance: Optional[AgentBrain] = None
 
 
 def get_agent() -> AgentBrain:
-    """Get or create the global agent instance"""
+    """Return (or lazily create) the global AgentBrain instance."""
     global _agent_instance
     if _agent_instance is None:
         _agent_instance = AgentBrain()
     return _agent_instance
-
-
-def initialize_agent() -> AgentBrain:
-    """Initialize the agent"""
-    return get_agent()

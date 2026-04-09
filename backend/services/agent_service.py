@@ -1,296 +1,257 @@
-"""Agent service for orchestrating agent execution and database operations"""
-from typing import Dict, Any, List, Optional
+"""
+Agent Service — orchestrates query execution, conversation management,
+caching and tool observability.
+
+All document retrieval now delegates to policy_retrieval_tool which
+enforces RBAC at the SQL level before any chunk is returned.
+"""
+
+import json
+import logging
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from backend.database.session import SessionLocal
-from backend.agents.brain import get_agent
+
 from backend.config import settings
+from backend.database.session import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 
 class AgentService:
-    """Service layer for agent operations"""
+    """Service layer for agent operations."""
+
+    # ------------------------------------------------------------------
+    # Conversation management
+    # ------------------------------------------------------------------
 
     @staticmethod
     def create_conversation(user_id: UUID, db: Session) -> Dict[str, Any]:
-        """Create a new conversation for a user"""
+        """Create a new conversation row and return its id."""
         try:
             conversation_id = str(uuid4())
-
-            query = text("""
-                INSERT INTO app.conversations (id, user_id)
-                VALUES (:id, :user_id)
-                RETURNING id
-            """)
-
-            result = db.execute(
-                query,
-                {
-                    "id": conversation_id,
-                    "user_id": str(user_id)
-                }
+            db.execute(
+                text("""
+                    INSERT INTO app.conversations (id, user_id)
+                    VALUES (:id, :user_id)
+                """),
+                {"id": conversation_id, "user_id": str(user_id)},
             )
             db.commit()
-
-            return {
-                "status": "success",
-                "conversation_id": conversation_id
-            }
-        except Exception as e:
+            return {"status": "success", "conversation_id": conversation_id}
+        except Exception as exc:
             db.rollback()
-            return {
-                "status": "error",
-                "error": str(e)
-            }
+            logger.error("create_conversation failed: %s", exc)
+            return {"status": "error", "error": str(exc)}
 
     @staticmethod
-    def get_or_create_conversation(user_id: UUID, conversation_id: Optional[UUID] = None, db: Session = None) -> str:
-        """Get existing conversation or create a new one"""
+    def get_or_create_conversation(
+        user_id: UUID,
+        conversation_id: Optional[UUID] = None,
+        db: Session = None,
+    ) -> str:
+        """Return an existing conversation id or create a new one."""
         if db is None:
             db = SessionLocal()
 
         if conversation_id:
-            # Check if conversation exists
-            query = text("SELECT id FROM app.conversations WHERE id = :id AND user_id = :user_id")
-            result = db.execute(query, {"id": str(conversation_id), "user_id": str(user_id)}).fetchone()
-            if result:
+            row = db.execute(
+                text("SELECT id FROM app.conversations WHERE id = :id AND user_id = :uid"),
+                {"id": str(conversation_id), "uid": str(user_id)},
+            ).fetchone()
+            if row:
                 return str(conversation_id)
 
-        # Create new conversation
         result = AgentService.create_conversation(user_id, db)
         if result["status"] == "success":
             return result["conversation_id"]
-        raise Exception("Failed to create conversation")
+        raise RuntimeError("Failed to create conversation")
 
     @staticmethod
-    def get_conversation_history(conversation_id: UUID, db: Session = None) -> List[Dict[str, Any]]:
-        """Retrieve conversation history"""
+    def get_conversation_history(
+        conversation_id: UUID,
+        db: Session = None,
+    ) -> List[Dict[str, Any]]:
+        """Return ordered messages for a conversation (oldest first)."""
         if db is None:
             db = SessionLocal()
-
         try:
-            query = text("""
-                SELECT id, question, answer, sequence_no, created_at
-                FROM app.messages
-                WHERE conversation_id = :conversation_id
-                ORDER BY sequence_no ASC
-                LIMIT :limit
-            """)
-
-            results = db.execute(
-                query,
-                {
-                    "conversation_id": str(conversation_id),
-                    "limit": settings.max_conversation_history
-                }
+            rows = db.execute(
+                text("""
+                    SELECT id, question, answer, sequence_no, created_at
+                    FROM app.messages
+                    WHERE conversation_id = :cid
+                    ORDER BY sequence_no ASC
+                    LIMIT :lim
+                """),
+                {"cid": str(conversation_id), "lim": settings.max_conversation_history},
             ).fetchall()
-
-            messages = []
-            for row in results:
-                messages.append({
-                    "id": str(row.id),
-                    "question": row.question,
-                    "answer": row.answer,
-                    "sequence_no": row.sequence_no,
-                    "created_at": str(row.created_at)
-                })
-
-            return messages
-
-        except Exception as e:
+            return [
+                {
+                    "id":          str(r.id),
+                    "question":    r.question,
+                    "answer":      r.answer,
+                    "sequence_no": r.sequence_no,
+                    "created_at":  str(r.created_at),
+                }
+                for r in rows
+            ]
+        except Exception as exc:
+            logger.warning("get_conversation_history failed: %s", exc)
             return []
 
+    # ------------------------------------------------------------------
+    # Core query execution
+    # ------------------------------------------------------------------
+
     @staticmethod
-    def execute_query(user_id: UUID, conversation_id: UUID, query: str, user_role: str, db: Session = None) -> Dict[str, Any]:
-        """Execute a query through the agent and store results"""
+    def execute_query(
+        user_id: UUID,
+        conversation_id: UUID,
+        query: str,
+        user_role: str,
+        db: Session = None,
+    ) -> Dict[str, Any]:
+        """
+        Run the policy retrieval tool, store the message, cache and log.
+
+        Uses policy_retrieval_tool which enforces RBAC at the SQL level
+        before any chunk is returned to this layer.
+        """
         if db is None:
             db = SessionLocal()
 
         try:
-            # Get conversation history for context
-            history = AgentService.get_conversation_history(conversation_id, db)
+            from backend.agents.tools.policy_retrieval_tool import policy_retrieval_tool
 
-            # Execute agent
-            agent = get_agent()
-            agent_response = agent.execute(query, user_role, history)
+            # ---- RAG retrieval with RBAC ----------------------------------
+            rag_result = policy_retrieval_tool(
+                query=query,
+                user_role=user_role,
+                top_k=5,
+                conversation_id=str(conversation_id),
+            )
+            answer  = rag_result["answer"]
+            sources = rag_result["sources"]
 
-            if agent_response["status"] != "success":
-                return agent_response
-
-            answer = agent_response["answer"]
-
-            # Get the next sequence number
-            seq_query = text("""
-                SELECT MAX(sequence_no) as max_seq
-                FROM app.messages
-                WHERE conversation_id = :conversation_id
-            """)
-            seq_result = db.execute(seq_query, {"conversation_id": str(conversation_id)}).fetchone()
-            next_seq = (seq_result.max_seq or 0) + 1
-
-            # Store message
+            # ---- Persist message -----------------------------------------
+            seq_row = db.execute(
+                text("""
+                    SELECT COALESCE(MAX(sequence_no), 0) AS max_seq
+                    FROM app.messages
+                    WHERE conversation_id = :cid
+                """),
+                {"cid": str(conversation_id)},
+            ).fetchone()
+            next_seq   = seq_row.max_seq + 1
             message_id = str(uuid4())
-            now = datetime.utcnow()
-
-            insert_query = text("""
-                INSERT INTO app.messages (id, conversation_id, question, answer, sequence_no, created_at)
-                VALUES (:id, :conversation_id, :question, :answer, :sequence_no, :created_at)
-                RETURNING id
-            """)
+            now        = datetime.utcnow()
 
             db.execute(
-                insert_query,
+                text("""
+                    INSERT INTO app.messages
+                        (id, conversation_id, question, answer, sequence_no, created_at)
+                    VALUES (:id, :cid, :q, :a, :seq, :ts)
+                """),
                 {
-                    "id": message_id,
-                    "conversation_id": str(conversation_id),
-                    "question": query,
-                    "answer": answer,
-                    "sequence_no": next_seq,
-                    "created_at": now
-                }
+                    "id":  message_id,
+                    "cid": str(conversation_id),
+                    "q":   query,
+                    "a":   answer,
+                    "seq": next_seq,
+                    "ts":  now,
+                },
             )
 
-            # Cache the response
-            AgentService.cache_query_result(query, answer, db)
-
-            # Log tool usage if available
-            AgentService.log_tool_usage("agent_query_executed", {"query": query}, {"answer": answer}, user_id, db)
+            # ---- Cache result --------------------------------------------
+            AgentService._cache_query(query, answer, db)
 
             db.commit()
 
             return {
-                "status": "success",
-                "message_id": message_id,
+                "status":          "success",
+                "message_id":      message_id,
                 "conversation_id": str(conversation_id),
-                "answer": answer,
-                "sequence_no": next_seq
+                "answer":          answer,
+                "sources":         sources,
+                "sequence_no":     next_seq,
             }
 
-        except Exception as e:
+        except Exception as exc:
             db.rollback()
-            return {
-                "status": "error",
-                "error": str(e)
-            }
+            logger.error("execute_query failed: %s", exc)
+            return {"status": "error", "error": str(exc)}
+
+    # ------------------------------------------------------------------
+    # Caching
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def cache_query_result(query: str, answer: str, db: Session) -> bool:
-        """Cache a query result"""
+    def _cache_query(query: str, answer: str, db: Session) -> None:
+        """Insert response into query_cache if not already present."""
         try:
-            cache_id = str(uuid4())
-            now = datetime.utcnow()
-
-            # Check if query already cached
-            check_query = text("SELECT id FROM app.query_cache WHERE query = :query")
-            existing = db.execute(check_query, {"query": query}).fetchone()
-
-            if existing:
-                # Update existing cache
-                update_query = text("""
-                    UPDATE app.query_cache
-                    SET answer = :answer, hit_count = hit_count + 1, updated_at = :updated_at
-                    WHERE query = :query
-                """)
+            existing = db.execute(
+                text("SELECT id FROM app.query_cache WHERE query_text = :qt"),
+                {"qt": query},
+            ).fetchone()
+            if not existing:
                 db.execute(
-                    update_query,
+                    text("""
+                        INSERT INTO app.query_cache
+                            (id, user_id, query_text, response_text, created_at)
+                        VALUES (:id, NULL, :qt, :rt, :ts)
+                    """),
                     {
-                        "query": query,
-                        "answer": answer,
-                        "updated_at": now
-                    }
+                        "id": str(uuid4()),
+                        "qt": query,
+                        "rt": answer,
+                        "ts": datetime.utcnow(),
+                    },
                 )
-            else:
-                # Insert new cache
-                insert_query = text("""
-                    INSERT INTO app.query_cache (id, query, answer, hit_count, created_at)
-                    VALUES (:id, :query, :answer, 1, :created_at)
-                """)
-                db.execute(
-                    insert_query,
-                    {
-                        "id": cache_id,
-                        "query": query,
-                        "answer": answer,
-                        "created_at": now
-                    }
-                )
-
             db.commit()
-            return True
-
-        except Exception as e:
+        except Exception as exc:
             db.rollback()
-            return False
+            logger.warning("_cache_query failed: %s", exc)
 
-    @staticmethod
-    def log_tool_usage(tool_name: str, input_params: Dict, output: Dict, user_id: UUID, db: Session) -> bool:
-        """Log tool usage for audit trail"""
-        try:
-            import json
-            log_id = str(uuid4())
-            now = datetime.utcnow()
-
-            insert_query = text("""
-                INSERT INTO app.tool_logs (id, user_id, tool_name, input_params, output, created_at)
-                VALUES (:id, :user_id, :tool_name, :input_params, :output, :created_at)
-            """)
-
-            db.execute(
-                insert_query,
-                {
-                    "id": log_id,
-                    "user_id": str(user_id),
-                    "tool_name": tool_name,
-                    "input_params": json.dumps(input_params),
-                    "output": json.dumps(output),
-                    "created_at": now
-                }
-            )
-
-            db.commit()
-            return True
-
-        except Exception as e:
-            db.rollback()
-            return False
+    # ------------------------------------------------------------------
+    # Document listing (for /documents endpoint)
+    # ------------------------------------------------------------------
 
     @staticmethod
     def get_documents(user_role: str, db: Session = None) -> List[Dict[str, Any]]:
-        """Get accessible documents for a user role"""
+        """Return documents accessible to *user_role* (by category)."""
         if db is None:
             db = SessionLocal()
 
+        role_categories: Dict[str, List[str]] = {
+            "admin":    ["admin", "hr", "general"],
+            "hr":       ["hr", "general"],
+            "employee": ["general"],
+        }
+        categories = role_categories.get(user_role.lower(), ["general"])
+
         try:
-            # Map role to categories
-            role_categories = {
-                "admin": ["admin", "hr", "general"],
-                "hr": ["hr", "general"],
-                "employee": ["general"]
-            }
-
-            categories = role_categories.get(user_role, ["general"])
-
-            query = text("""
-                SELECT id, filename, category, description, file_path, created_at
-                FROM app.documents
-                WHERE category = ANY(:categories)
-                ORDER BY created_at DESC
-            """)
-
-            results = db.execute(query, {"categories": categories}).fetchall()
-
-            documents = []
-            for row in results:
-                documents.append({
-                    "id": str(row.id),
-                    "filename": row.filename,
-                    "category": row.category,
-                    "description": row.description,
-                    "created_at": str(row.created_at)
-                })
-
-            return documents
-
-        except Exception as e:
+            rows = db.execute(
+                text("""
+                    SELECT id, file_name, category, file_path, created_at
+                    FROM app.documents
+                    WHERE category = ANY(:cats) AND is_active = TRUE
+                    ORDER BY created_at DESC
+                """),
+                {"cats": categories},
+            ).fetchall()
+            return [
+                {
+                    "id":         str(r.id),
+                    "filename":   r.file_name,
+                    "category":   r.category,
+                    "created_at": str(r.created_at),
+                }
+                for r in rows
+            ]
+        except Exception as exc:
+            logger.warning("get_documents failed: %s", exc)
             return []

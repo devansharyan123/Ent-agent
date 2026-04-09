@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
+from uuid import UUID
 
 
 from backend.routes import conversation
