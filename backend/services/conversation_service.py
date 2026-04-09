@@ -41,3 +41,9 @@ def get_history(db, conversation_id):
         {"q": m.question, "a": m.answer}
         for m in messages
     ]
+def get_conversations_by_user(db, user_id):
+    conversations = db.query(Conversation).filter(
+        Conversation.user_id == user_id
+    ).order_by(Conversation.created_at.desc()).all()
+
+    return conversations
