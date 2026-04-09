@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from database.session import get_db
-from services.conversation_service import start_conversation, send_message, get_history,get_conversations_by_user
+from backend.database.session import get_db
+from backend.services.conversation_service import start_conversation, send_message, get_history,get_conversations_by_user
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 

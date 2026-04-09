@@ -1,4 +1,4 @@
-from database.models import Conversation, Message
+from backend.database.models import Conversation, Message
 
 
 def start_conversation(db, user_id):
