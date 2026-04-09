@@ -1,12 +1,17 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
+
+
+from backend.routes import conversation
+
 from backend.database.session import get_db
 from backend.auth.logic import login_user
 from backend.services.auth_service import create_user
 
+
 app = FastAPI()
 
-
+app.include_router(conversation.router)
 @app.post("/register")
 def register(username: str, email: str, password: str, role: str, db: Session = Depends(get_db)):
     user = create_user(db, username, email, password, role)
