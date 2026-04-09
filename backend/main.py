@@ -5,10 +5,11 @@ from sqlalchemy.orm import Session
 from database.session import get_db
 from auth.logic import login_user
 from services.auth_service import create_user
+from routes import conversation
 
 app = FastAPI()
 
-
+app.include_router(conversation.router)
 @app.post("/register")
 def register(username: str, email: str, password: str, role: str, db: Session = Depends(get_db)):
     user = create_user(db, username, email, password, role)
