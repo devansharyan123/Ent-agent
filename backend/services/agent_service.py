@@ -17,11 +17,10 @@ class AgentService:
         """Create a new conversation for a user"""
         try:
             conversation_id = str(uuid4())
-            now = datetime.utcnow()
 
             query = text("""
-                INSERT INTO app.conversations (id, user_id, created_at, updated_at)
-                VALUES (:id, :user_id, :created_at, :updated_at)
+                INSERT INTO app.conversations (id, user_id)
+                VALUES (:id, :user_id)
                 RETURNING id
             """)
 
@@ -29,9 +28,7 @@ class AgentService:
                 query,
                 {
                     "id": conversation_id,
-                    "user_id": str(user_id),
-                    "created_at": now,
-                    "updated_at": now
+                    "user_id": str(user_id)
                 }
             )
             db.commit()
