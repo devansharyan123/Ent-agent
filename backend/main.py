@@ -1,6 +1,9 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
-from uuid import UUID
+
+
+from backend.routes import conversation
+
 from backend.database.session import get_db
 from backend.auth.logic import login_user
 from backend.services.auth_service import create_user
@@ -8,9 +11,10 @@ from backend.services.agent_service import AgentService
 from backend.database.models import User
 from backend.database.schemas import UserCreate, UserLogin, AskRequest
 
+
 app = FastAPI()
 
-
+app.include_router(conversation.router)
 @app.post("/register")
 def register(request: UserCreate, db: Session = Depends(get_db)):
     user = create_user(db, request.username, request.email, request.password, request.role)

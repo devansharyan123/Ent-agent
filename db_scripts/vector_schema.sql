@@ -20,7 +20,7 @@ look the embeddings
 CREATE TABLE IF NOT EXISTS vector_store.rag_embeddings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     chunk_id UUID NOT NULL UNIQUE REFERENCES vector_store.document_chunks(id) ON DELETE CASCADE,
-    embedding VECTOR(1536) NOT NULL,
+    embedding VECTOR(768) NOT NULL,
     embedding_model VARCHAR(100) DEFAULT 'text-embedding-3-small',
     created_at TIMESTAMP DEFAULT NOW()
 );
