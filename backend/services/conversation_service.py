@@ -1,25 +1,39 @@
 from backend.database.models import Conversation, Message
+from backend.services.external_knowledge_service import get_external_answer
+import uuid
 
 
+# ---------------- START CONVERSATION ----------------
 def start_conversation(db, user_id):
-    convo = Conversation(user_id=user_id, title="New Chat")
+    convo = Conversation(
+        id=uuid.uuid4(),
+        user_id=uuid.UUID(str(user_id)),
+        title="New Chat"
+    )
+
     db.add(convo)
     db.commit()
     db.refresh(convo)
 
-    return {"conversation_id": str(convo.id)}
+    return convo
 
 
-def send_message(db, conversation_id, question):
-    count = db.query(Message).filter(
+# ---------------- SEND MESSAGE ----------------
+def send_message(db, conversation_id, question, role):
+    conversation_id = uuid.UUID(str(conversation_id))
+
+    # Get last sequence number
+    last_msg = db.query(Message).filter(
         Message.conversation_id == conversation_id
-    ).count()
+    ).order_by(Message.sequence_no.desc()).first()
 
-    sequence_no = count + 1
+    sequence_no = 1 if not last_msg else last_msg.sequence_no + 1
 
-    answer = f"AI response to: {question}"
+    # 🔥 External Knowledge (OpenAI)
+    answer = get_external_answer(question, role)
 
     msg = Message(
+        id=uuid.uuid4(),
         conversation_id=conversation_id,
         sequence_no=sequence_no,
         question=question,
@@ -28,22 +42,26 @@ def send_message(db, conversation_id, question):
 
     db.add(msg)
     db.commit()
+    db.refresh(msg)
 
-    return {"answer": answer}
+    return msg
 
 
+# ---------------- GET HISTORY ----------------
 def get_history(db, conversation_id):
+    conversation_id = uuid.UUID(str(conversation_id))
+
     messages = db.query(Message).filter(
         Message.conversation_id == conversation_id
     ).order_by(Message.sequence_no).all()
 
-    return [
-        {"q": m.question, "a": m.answer}
-        for m in messages
-    ]
+    return messages
+
+
+# ---------------- GET USER CONVERSATIONS ----------------
 def get_conversations_by_user(db, user_id):
-    conversations = db.query(Conversation).filter(
+    user_id = uuid.UUID(str(user_id))
+
+    return db.query(Conversation).filter(
         Conversation.user_id == user_id
     ).order_by(Conversation.created_at.desc()).all()
-
-    return conversations
