@@ -3,6 +3,7 @@ annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.13.0
 attrs==26.1.0
+bcrypt==5.0.0
 blinker==1.9.0
 cachetools==7.0.5
 certifi==2026.2.25
@@ -48,6 +49,7 @@ orjson==3.11.8
 ormsgpack==1.12.2
 packaging==26.0
 pandas==3.0.2
+passlib==1.7.4
 pgvector==0.4.2
 pillow==12.2.0
 pluggy==1.6.0
@@ -93,14 +95,9 @@ typing_extensions==4.15.0
 urllib3==2.6.3
 uuid_utils==0.14.1
 uvicorn==0.44.0
-
 uvloop==0.22.1
-
 watchdog==6.0.0
 watchfiles==1.1.1
 websockets==16.0
 xxhash==3.6.0
 zstandard==0.25.0
-sentence-transformers==2.3.0
-transformers==4.35.0
-torch==2.2.0
