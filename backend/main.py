@@ -1,10 +1,8 @@
-# backend/main.py
-
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
-from database.session import get_db
-from auth.logic import login_user
-from services.auth_service import create_user
+from backend.database.session import get_db
+from backend.auth.logic import login_user
+from backend.services.auth_service import create_user
 
 app = FastAPI()
 

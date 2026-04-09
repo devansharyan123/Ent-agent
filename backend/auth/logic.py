@@ -1,7 +1,7 @@
 # backend/auth/logic.py
 
 from sqlalchemy.orm import Session
-from services.auth_service import get_user_by_username, verify_password
+from backend.services.auth_service import get_user_by_username, verify_password
 
 
 def login_user(db: Session, username: str, password: str):
