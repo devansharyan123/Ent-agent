@@ -11,7 +11,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
-
+import re
 import psycopg2
 from langchain_groq import ChatGroq
 from pgvector.psycopg2 import register_vector
@@ -70,10 +70,10 @@ def _get_psycopg2_conn():
         logger.info(f"Connecting to database: {db_url.split('@')[1] if '@' in db_url else db_url}")
         conn = psycopg2.connect(db_url)
         register_vector(conn)
-        logger.info("✅ Database connection established with pgvector")
+        logger.info("Database connection established with pgvector")
         return conn
     except Exception as e:
-        logger.error(f"❌ Failed to connect to database: {str(e)}", exc_info=True)
+        logger.error(f"Failed to connect to database: {str(e)}", exc_info=True)
         raise
 
 
@@ -161,7 +161,7 @@ def _vector_search(
             (allowed_categories, embedding_array, top_k),
         )
         rows = cur.fetchall()
-        logger.info(f"✅ Vector search returned {len(rows)} chunks")
+        logger.info(f"Vector search returned {len(rows)} chunks")
         cur.close()
         return [
             {
@@ -175,11 +175,30 @@ def _vector_search(
             for row in rows
         ]
     except Exception as e:
-        logger.error(f"❌ Vector search error: {str(e)}", exc_info=True)
+        logger.error(f"Vector search error: {str(e)}", exc_info=True)
         raise
     finally:
         conn.close()
 
+def _normalize_answer(text: str) -> str:
+    if not text:
+        return text
+    text = re.sub(r'(?i)\bsource\b:.*', '', text)
+    text = re.sub(r'\s*[\u2022\*\-]\s*', '\n', text)
+    text = re.sub(r'\n?\s*\d+[.\)]\s*', '\n', text)
+    text = re.sub(r'\n+', '\n', text).strip()
+    parts = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        s = s.strip(' \t\n\r:;,-')
+        if not s.endswith(('.', '!', '?')):
+            s = s + '.'
+        s = s[0].upper() + s[1:] if len(s) > 1 else s.upper()
+        parts.append(s)
+
+    return ' '.join(parts)
 
 def _generate_answer(query: str, chunks: List[Dict[str, Any]]) -> str:
     """
@@ -272,9 +291,9 @@ def policy_retrieval_tool(
         logger.info(f"Encoding query: {query[:50]}...")
         embedder = get_embedder()
         query_embedding = embedder.encode(query, convert_to_numpy=True).tolist()
-        logger.info(f"✅ Query embedding generated: {len(query_embedding)} dimensions")
+        logger.info(f"Query embedding generated: {len(query_embedding)} dimensions")
     except Exception as exc:
-        logger.error(f"❌ Embedding failed: {exc}", exc_info=True)
+        logger.error(f"Embedding failed: {exc}", exc_info=True)
         result = {
             "answer":           f"Embedding service error: {str(exc)[:100]}",
             "sources":          [],
@@ -314,7 +333,7 @@ def policy_retrieval_tool(
     except Exception as exc:
         logger.error("LLM generation failed: %s", exc)
         answer = "Answer generation failed. Please try again."
-
+    answer = _normalize_answer(answer)
     # Build response (file_path intentionally excluded from sources)
     sources = [
         {
