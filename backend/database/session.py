@@ -19,10 +19,14 @@ def _build_async_database_url(database_url: str) -> str:
     url = make_url(database_url)
 
     if url.drivername in {"postgresql", "postgres"}:
-        return str(url.set(drivername="postgresql+asyncpg"))
+        return url.set(drivername="postgresql+asyncpg").render_as_string(
+            hide_password=False
+        )
 
     if url.drivername.startswith("postgresql+"):
-        return str(url.set(drivername="postgresql+asyncpg"))
+        return url.set(drivername="postgresql+asyncpg").render_as_string(
+            hide_password=False
+        )
 
     raise ValueError("DATABASE_URL must point to a PostgreSQL database.")
 

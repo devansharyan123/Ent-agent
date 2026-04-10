@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.routes import conversation
@@ -29,8 +29,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await verify_database_connection()
-    logger.info("Database connection verified during startup.")
+    try:
+        await verify_database_connection()
+        logger.info("Database connection verified during startup.")
+    except RuntimeError as exc:
+        logger.warning("Database startup verification failed: %s", exc)
     try:
         yield
     finally:
@@ -51,6 +54,19 @@ async def database_unavailable_handler(_: Request, exc: OperationalError):
         content={
             "detail": (
                 "Database is unavailable. Verify PostgreSQL is running and DATABASE_URL is correct."
+            )
+        },
+    )
+
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_error_handler(_: Request, exc: SQLAlchemyError):
+    logger.exception("Database operation failed.", exc_info=exc)
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "detail": (
+                "Database request failed. Verify PostgreSQL is reachable and DATABASE_URL credentials are valid."
             )
         },
     )
