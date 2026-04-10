@@ -10,7 +10,7 @@ class UserCreate(BaseSchema):
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr = Field(...)
     password: str = Field(..., min_length=6, max_length=100)
-    role: Literal["admin", "hr", "employee"] = Field(...)
+    role: Literal["Admin", "HR", "Employee"] = Field(...)
 
 
 class UserLogin(BaseSchema):
@@ -22,7 +22,7 @@ class UserResponse(BaseSchema):
     id: UUID
     username: str
     email: EmailStr
-    role: Literal["admin", "hr", "employee"]
+    role: Literal["Admin", "HR", "Employee"]
     created_at: datetime
 
 
@@ -56,7 +56,7 @@ class MessageResponse(BaseSchema):
 class DocumentCreate(BaseSchema):
     file_name: str = Field(..., min_length=3, max_length=255)
     file_path: str = Field(..., min_length=5, max_length=500)
-    category: Literal["hr", "general"]
+    category: Literal["HR", "general"]
 
 
 class DocumentResponse(BaseSchema):
@@ -94,3 +94,9 @@ class RagEmbeddingResponse(BaseSchema):
     chunk_id: UUID
     embedding_model: str
     created_at: datetime
+
+
+class AskRequest(BaseSchema):
+    user_id: UUID
+    question: str = Field(..., min_length=1, max_length=5000)
+    conversation_id: Optional[UUID] = None

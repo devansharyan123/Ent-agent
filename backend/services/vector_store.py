@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 from pathlib import Path
 from typing import List, Optional
 
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from backend.database.models import Document, DocumentChunk, RagEmbedding
 
+logger = logging.getLogger(__name__)
+
 EMBEDDING_MODEL = "all-mpnet-base-v2"
 EMBEDDING_DEVICE = "cpu"
 CHUNK_CHAR_SIZE = 1000
@@ -16,9 +19,20 @@ _embedder: Optional[SentenceTransformer] = None
 
 
 def get_embedder() -> SentenceTransformer:
+    """Load embedding model with caching and error handling."""
     global _embedder
     if _embedder is None:
-        _embedder = SentenceTransformer(EMBEDDING_MODEL, device=EMBEDDING_DEVICE)
+        try:
+            logger.info(f"Loading embedding model: {EMBEDDING_MODEL} on device: {EMBEDDING_DEVICE}")
+            _embedder = SentenceTransformer(
+                EMBEDDING_MODEL,
+                device=EMBEDDING_DEVICE,
+                cache_folder=os.path.expanduser("~/.cache/sentence-transformers")
+            )
+            logger.info("✅ Embedding model loaded successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to load embedding model: {str(e)}")
+            raise RuntimeError(f"Embedding service failed: {str(e)}")
     return _embedder
 
 
@@ -67,12 +81,23 @@ def chunk_text(text: str, max_chars: int = CHUNK_CHAR_SIZE) -> List[str]:
 
 
 def embed_texts(texts: List[str]) -> List[List[float]]:
+    """Embed texts with error handling."""
     if not texts:
         return []
 
-    embedder = get_embedder()
-    embeddings = embedder.encode(texts, show_progress_bar=False, convert_to_numpy=True)
-    return [vector.tolist() for vector in embeddings]
+    try:
+        embedder = get_embedder()
+        embeddings = embedder.encode(
+            texts,
+            show_progress_bar=False,
+            convert_to_numpy=True,
+            batch_size=32
+        )
+        logger.info(f"✅ Generated {len(embeddings)} embeddings")
+        return [vector.tolist() for vector in embeddings]
+    except Exception as e:
+        logger.error(f"❌ Embedding failed: {str(e)}")
+        raise
 
 
 def get_or_create_document(db: Session, file_path: str, category: str) -> Document:
