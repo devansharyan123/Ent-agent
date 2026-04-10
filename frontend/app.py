@@ -12,6 +12,10 @@ if "role" not in st.session_state:
     st.session_state.role = None
 if "conversation_id" not in st.session_state:
     st.session_state.conversation_id = None
+if "tool_select" not in st.session_state:
+    st.session_state.tool_select = "Auto (RAG first)"
+if "tool_locked" not in st.session_state:
+    st.session_state.tool_locked = False
 
 # ---------------- SIDEBAR ----------------
 st.sidebar.title("🏢 Enterprise AI Assistant")
@@ -170,6 +174,47 @@ elif st.session_state.user_id:
         st.warning("Select or create a conversation")
 
     else:
+        # Tool selection + lock UI located at message input area
+        col_tool, col_input = st.columns([1, 9])
+
+        with col_tool:
+            options = ["Auto (RAG first)", "Policies (RAG)", "LLM (External)"]
+            # disable selection when locked to prevent changes
+            try:
+                tool_choice = st.selectbox(
+                    "Tool",
+                    options,
+                    index=options.index(st.session_state.tool_select),
+                    key="tool_select_box",
+                    disabled=st.session_state.tool_locked
+                )
+            except Exception:
+                # fallback if disabled isn't supported in this streamlit version
+                tool_choice = st.selectbox(
+                    "Tool",
+                    options,
+                    index=options.index(st.session_state.tool_select),
+                    key="tool_select_box"
+                )
+
+            # lock/unlock buttons
+            if not st.session_state.tool_locked:
+                if st.button("+", key="lock_tool"):
+                    st.session_state.tool_select = tool_choice
+                    st.session_state.tool_locked = True
+                    st.experimental_rerun()
+            else:
+                st.write("Locked")
+                if st.button("Change", key="unlock_tool"):
+                    st.session_state.tool_locked = False
+                    st.experimental_rerun()
+
+            # persist selection even when not locked
+            st.session_state.tool_select = tool_choice
+
+        with col_input:
+            user_input = st.chat_input("Ask something...")
+
         # ---------------- LOAD HISTORY ----------------
         messages = []
 
@@ -194,20 +239,27 @@ elif st.session_state.user_id:
             with st.chat_message("assistant"):
                 st.write(msg.get("answer"))
 
-        # ---------------- INPUT ----------------
-        user_input = st.chat_input("Ask something...")
-
+        # ---------------- SEND ----------------
         if user_input:
             with st.chat_message("user"):
                 st.write(user_input)
 
             try:
+                # map UI labels to a simple tool param
+                tool_map = {
+                    "Auto (RAG first)": "auto",
+                    "Policies (RAG)": "rag",
+                    "LLM (External)": "llm"
+                }
+                selected_tool = tool_map.get(st.session_state.tool_select, "auto")
+
                 res = requests.post(
                     f"{BASE_URL}/chat/message",
                     params={
                         "conversation_id": st.session_state.conversation_id,
                         "question": user_input,
-                        "role": st.session_state.role
+                        "role": st.session_state.role,
+                        "tool": selected_tool
                     }
                 )
 

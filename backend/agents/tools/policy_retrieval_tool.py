@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _ROLE_CATEGORY_MAP: Dict[str, List[str]] = {
-    "admin":    ["admin", "hr", "general"],
-    "hr":       ["hr", "general"],
-    "employee": ["general"],
+   "admin":    ["admin", "hr", "general", "leave", "payroll"],
+    "hr":       ["hr", "general", "leave", "payroll"],
+    "employee": ["general", "leave"],
 }
 
 

@@ -26,8 +26,14 @@ def start(user_id: str, db: Session = Depends(get_db)):
 
 # ---------------- MESSAGE ----------------
 @router.post("/message")
-def message(conversation_id: str, question: str, role: str, db: Session = Depends(get_db)):
-    msg = send_message(db, conversation_id, question, role)
+def message(
+    conversation_id: str,
+    question: str,
+    role: str,
+    tool: str = "auto",  # "auto" | "rag" | "llm"
+    db: Session = Depends(get_db),
+):
+    msg = send_message(db, conversation_id, question, role, tool)
 
     return {
         "question": msg.question,
