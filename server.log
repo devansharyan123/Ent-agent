@@ -17,3 +17,5 @@ tool_logs insert failed: set_session cannot be used inside a transaction
 INFO:     127.0.0.1:42582 - "POST /ask HTTP/1.1" 200 OK
 tool_logs insert failed: set_session cannot be used inside a transaction
 INFO:     127.0.0.1:40688 - "POST /ask HTTP/1.1" 200 OK
+tool_logs insert failed: set_session cannot be used inside a transaction
+INFO:     127.0.0.1:56298 - "POST /ask HTTP/1.1" 200 OK
