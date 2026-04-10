@@ -12,7 +12,7 @@ from backend.database.models import Document, DocumentChunk, RagEmbedding
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = "all-mpnet-base-v2"
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DEVICE = "cpu"
 CHUNK_CHAR_SIZE = 1000
 _embedder: Optional[SentenceTransformer] = None
