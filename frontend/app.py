@@ -40,17 +40,24 @@ if not st.session_state.user_id and menu == "Register":
         if not username or not email or not password:
             st.warning("Please fill all fields")
         else:
-            res = requests.post(
-                f"{BASE_URL}/register",
-                json={
-                    "username": username,
-                    "email": email,
-                    "password": password,
-                    "role": role
-                }
-            )
+            try:
+                res = requests.post(
+                    f"{BASE_URL}/register",
+                    json={
+                        "username": username,
+                        "email": email,
+                        "password": password,
+                        "role": role
+                    }
+                )
 
-            st.success("Account created! Please login.")
+                if res.status_code == 200:
+                    st.success("Account created! Please login.")
+                else:
+                    st.error("Registration failed")
+
+            except Exception as e:
+                st.error(f"Error: {e}")
 
 
 # ---------------- LOGIN ----------------
@@ -73,15 +80,18 @@ elif not st.session_state.user_id and menu == "Login":
                     }
                 )
 
-                data = res.json()
+                if res.status_code == 200:
+                    data = res.json()
 
-                if "error" in data:
-                    st.error(data["error"])
+                    if "error" in data:
+                        st.error(data["error"])
+                    else:
+                        st.session_state.user_id = data["user_id"]
+                        st.session_state.role = data["role"]
+                        st.success("Login successful")
+                        st.rerun()
                 else:
-                    st.session_state.user_id = data["user_id"]
-                    st.session_state.role = data["role"]
-                    st.success("Login successful")
-                    st.rerun()
+                    st.error("Login failed")
 
             except Exception as e:
                 st.error(f"Error: {e}")
@@ -109,16 +119,29 @@ elif st.session_state.user_id:
         res = requests.get(f"{BASE_URL}/chat/user/{st.session_state.user_id}")
         if res.status_code == 200:
             conversations = res.json()
-        else:
-            st.sidebar.error("Failed to fetch conversations")
     except:
         st.sidebar.error("Backend not reachable")
 
-    # Display conversations
-    if isinstance(conversations, list):
-        for conv in conversations:
-            if st.sidebar.button(conv["title"], key=conv["conversation_id"]):
+    # Display conversations with delete button
+    for conv in conversations:
+        col1, col2 = st.sidebar.columns([4, 1])
+
+        with col1:
+            if st.button(conv["title"], key=f"open_{conv['conversation_id']}"):
                 st.session_state.conversation_id = conv["conversation_id"]
+
+        with col2:
+            if st.button("❌", key=f"del_{conv['conversation_id']}"):
+                try:
+                    requests.delete(f"{BASE_URL}/chat/{conv['conversation_id']}")
+
+                    if st.session_state.conversation_id == conv["conversation_id"]:
+                        st.session_state.conversation_id = None
+
+                    st.rerun()
+
+                except Exception as e:
+                    st.sidebar.error(f"Delete failed: {e}")
 
     # ---------------- NEW CONVERSATION ----------------
     st.sidebar.markdown("---")
@@ -147,7 +170,7 @@ elif st.session_state.user_id:
         st.warning("Select or create a conversation")
 
     else:
-        # Load messages
+        # ---------------- LOAD HISTORY ----------------
         messages = []
 
         try:
@@ -163,15 +186,15 @@ elif st.session_state.user_id:
         except:
             st.error("Backend not reachable")
 
-        # Display messages
+        # ---------------- DISPLAY CHAT ----------------
         for msg in messages:
             with st.chat_message("user"):
-                st.write(msg["question"])
+                st.write(msg.get("question"))
 
             with st.chat_message("assistant"):
-                st.write(msg["answer"])
+                st.write(msg.get("answer"))
 
-        # Input
+        # ---------------- INPUT ----------------
         user_input = st.chat_input("Ask something...")
 
         if user_input:

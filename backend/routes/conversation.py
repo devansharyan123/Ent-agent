@@ -1,82 +1,77 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-import uuid
 
 from backend.database.session import get_db
 from backend.services.conversation_service import (
     start_conversation,
     send_message,
     get_history,
-    get_conversations_by_user
+    get_conversations_by_user,
+    delete_conversation
 )
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
-# ---------------- START CONVERSATION ----------------
+# ---------------- START ----------------
 @router.post("/start")
 def start(user_id: str, db: Session = Depends(get_db)):
-    try:
-        conv = start_conversation(db, user_id)
+    conv = start_conversation(db, user_id)
 
-        return {
-            "conversation_id": str(conv.id),
-            "title": conv.title,
-            "created_at": conv.created_at
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "conversation_id": str(conv.id),
+        "title": conv.title
+    }
 
 
-# ---------------- SEND MESSAGE ----------------
+# ---------------- MESSAGE ----------------
 @router.post("/message")
 def message(conversation_id: str, question: str, role: str, db: Session = Depends(get_db)):
-    try:
-        msg = send_message(db, conversation_id, question, role)
+    msg = send_message(db, conversation_id, question, role)
 
-        return {
-            "question": msg.question,
-            "answer": msg.answer
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "question": msg.question,
+        "answer": msg.answer
+    }
 
 
-# ---------------- GET CHAT HISTORY ----------------
+# ---------------- HISTORY ----------------
 @router.get("/history/{conversation_id}")
 def history(conversation_id: str, db: Session = Depends(get_db)):
-    try:
-        messages = get_history(db, conversation_id)
+    messages = get_history(db, conversation_id)
 
-        return [
-            {
-                "question": m.question,
-                "answer": m.answer,
-                "sequence_no": m.sequence_no
-            }
-            for m in messages
-        ]
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return [
+        {
+            "question": m.question,
+            "answer": m.answer
+        }
+        for m in messages
+    ]
 
 
-# ---------------- GET USER CONVERSATIONS ----------------
+# ---------------- USER CONVERSATIONS ----------------
 @router.get("/user/{user_id}")
 def get_user_conversations(user_id: str, db: Session = Depends(get_db)):
-    try:
-        conversations = get_conversations_by_user(db, user_id)
+    conversations = get_conversations_by_user(db, user_id)
 
-        return [
-            {
-                "conversation_id": str(c.id),
-                "title": c.title,
-                "created_at": c.created_at
-            }
-            for c in conversations
-        ]
+    return [
+        {
+            "conversation_id": str(c.id),
+            "title": c.title
+        }
+        for c in conversations
+    ]
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+# ---------------- DELETE ----------------
+@router.delete("/{conversation_id}")
+def delete(conv_id: str = None, conversation_id: str = None, db: Session = Depends(get_db)):
+    # support both param names
+    cid = conversation_id or conv_id
+
+    success = delete_conversation(db, cid)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return {"message": "Deleted successfully"}

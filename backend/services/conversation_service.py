@@ -29,7 +29,7 @@ def send_message(db, conversation_id, question, role):
 
     sequence_no = 1 if not last_msg else last_msg.sequence_no + 1
 
-    # 🔥 External Knowledge (OpenAI)
+    # 🔥 External Knowledge (for now)
     answer = get_external_answer(question, role)
 
     msg = Message(
@@ -41,6 +41,15 @@ def send_message(db, conversation_id, question, role):
     )
 
     db.add(msg)
+
+    # 🔥 UPDATE TITLE (IMPORTANT FIX)
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conversation_id
+    ).first()
+
+    if conversation and conversation.title == "New Chat":
+        conversation.title = question[:40]
+
     db.commit()
     db.refresh(msg)
 
@@ -51,11 +60,9 @@ def send_message(db, conversation_id, question, role):
 def get_history(db, conversation_id):
     conversation_id = uuid.UUID(str(conversation_id))
 
-    messages = db.query(Message).filter(
+    return db.query(Message).filter(
         Message.conversation_id == conversation_id
     ).order_by(Message.sequence_no).all()
-
-    return messages
 
 
 # ---------------- GET USER CONVERSATIONS ----------------
@@ -65,3 +72,19 @@ def get_conversations_by_user(db, user_id):
     return db.query(Conversation).filter(
         Conversation.user_id == user_id
     ).order_by(Conversation.created_at.desc()).all()
+
+
+# ---------------- DELETE CONVERSATION ----------------
+def delete_conversation(db, conversation_id):
+    conversation_id = uuid.UUID(str(conversation_id))
+
+    conv = db.query(Conversation).filter(
+        Conversation.id == conversation_id
+    ).first()
+
+    if not conv:
+        return False
+
+    db.delete(conv)
+    db.commit()
+    return True
