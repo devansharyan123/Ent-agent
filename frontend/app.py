@@ -5,6 +5,32 @@ BASE_URL = "http://127.0.0.1:8000"
 
 st.set_page_config(page_title="Enterprise AI Assistant", layout="wide")
 
+# ---------------- CUSTOM CSS ----------------
+st.markdown("""
+<style>
+    .stMarkdown table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1.5rem 0;
+    }
+    .stMarkdown th, .stMarkdown td {
+        border: 1px solid rgba(150, 150, 150, 0.4) !important;
+        padding: 12px !important;
+    }
+    .stMarkdown th {
+        background-color: rgba(150, 150, 150, 0.15) !important;
+        font-weight: 700 !important;
+    }
+    .stMarkdown tr:nth-child(even) {
+        background-color: rgba(150, 150, 150, 0.05) !important;
+    }
+    .stMarkdown tr:hover {
+        background-color: rgba(150, 150, 150, 0.1) !important;
+        transition: background-color 0.2s ease-in-out;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # ---------------- SESSION ----------------
 if "user_id" not in st.session_state:
     st.session_state.user_id = None
@@ -178,7 +204,7 @@ elif st.session_state.user_id:
         col_tool, col_input = st.columns([1, 9])
 
         with col_tool:
-            options = ["Auto (RAG first)", "Policies (RAG)", "LLM (External)"]
+            options = ["Auto (RAG first)", "Policies (RAG)", "LLM (External)", "Document Summary", "Policy Comparison", "Agent Brain"]
             # disable selection when locked to prevent changes
             try:
                 tool_choice = st.selectbox(
@@ -249,7 +275,10 @@ elif st.session_state.user_id:
                 tool_map = {
                     "Auto (RAG first)": "auto",
                     "Policies (RAG)": "rag",
-                    "LLM (External)": "llm"
+                    "LLM (External)": "llm",
+                    "Document Summary": "summary",
+                    "Policy Comparison": "compare",
+                    "Agent Brain": "agent"
                 }
                 selected_tool = tool_map.get(st.session_state.tool_select, "auto")
 

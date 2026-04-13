@@ -229,7 +229,10 @@ def _generate_answer(query: str, chunks: List[Dict[str, Any]]) -> str:
         temperature=0.0,   # deterministic for policy answers
     )
 
-    response = llm.invoke(f"{system_prompt}\n\n{user_prompt}")
+    response = llm.invoke([
+        ("system", system_prompt),
+        ("human", user_prompt)
+    ])
     return response.content
 
 

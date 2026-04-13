@@ -28,6 +28,9 @@ def send_message(db, conversation_id, question, role, tool="auto"):
     tool: "auto" (default) = try RAG then fallback to LLM
           "rag" = policy-only (no LLM fallback)
           "llm" = LLM-only
+          "summary" = trigger Summarization Tool
+          "compare" = trigger Comparison Tool
+          "agent" = trigger LangGraph AgentBrain
     """
     conversation_id = uuid.UUID(str(conversation_id))
 
@@ -76,6 +79,64 @@ def send_message(db, conversation_id, question, role, tool="auto"):
         except Exception:
             logger.exception("LLM call failed (tool=llm)")
             answer = "LLM answer failed. Please try again later."
+            
+    elif str(tool).lower() == "summary":
+        # Summarization Tool
+        try:
+            from backend.agents.tools.summarization_tool import summarization_tool
+            summary_result = summarization_tool(
+                query=question,
+                user_role=role,
+                conversation_id=str(conversation_id)
+            )
+            answer = (summary_result.get("answer") or "").strip()
+            if not answer:
+                answer = "No relevant policy documents found to summarize in your access scope."
+            sources = summary_result.get("sources", [])
+            if sources:
+                citations = []
+                for s in sources:
+                    fn = s.get("file_name", "Unknown")
+                    citations.append(f"- {fn}")
+                answer = f"{answer}\n\nSources:\n" + "\n".join(citations)
+        except Exception:
+            logger.exception("Summarization sequence failed (tool=summary)")
+            answer = "Document summarization failed. Please try again later."
+            
+    elif str(tool).lower() == "compare":
+        # Comparison Tool
+        try:
+            from backend.agents.tools.comparison_tool import comparison_tool
+            compare_result = comparison_tool(
+                query=question,
+                user_role=role,
+                conversation_id=str(conversation_id)
+            )
+            answer = (compare_result.get("answer") or "").strip()
+            if not answer:
+                answer = "No relevant policy documents found to compare in your access scope."
+            sources = compare_result.get("sources", [])
+            if sources:
+                citations = []
+                for s in sources:
+                    fn = s.get("file_name", "Unknown")
+                    citations.append(f"- {fn}")
+                answer = f"{answer}\n\nSources:\n" + "\n".join(citations)
+        except Exception:
+            logger.exception("Comparison sequence failed (tool=compare)")
+            answer = "Document comparison failed. Please try again later."
+
+    elif str(tool).lower() == "agent":
+        # LangGraph AgentBrain orchestration
+        try:
+            from backend.agents.brain import get_agent
+            agent_result = get_agent().execute(query=question, user_role=role)
+            answer = agent_result.get("answer", "Agent failed to generate an answer.")
+            if not answer or not answer.strip():
+                answer = "Agent generated an empty response."
+        except Exception:
+            logger.exception("Agent call failed (tool=agent)")
+            answer = "Agent processing failed. Please try again later."
 
     else:
         # auto: try RAG first, fall back to LLM if no policy found or rag errors
