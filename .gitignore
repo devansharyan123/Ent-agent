@@ -2,3 +2,7 @@
 
 venv
 .venv
+pycache__
+__pycache__
+*.pyc
+IMPLEMENTATION_SUMMARY.md
