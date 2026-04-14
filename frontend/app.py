@@ -92,6 +92,19 @@ def _source_key(message: dict) -> str:
     return f"{question}|||{answer}"
 
 
+
+
+def _render_recommendations(recommendations: list[str]) -> None:
+    """Display policy recommendations in a clean format."""
+    if not recommendations:
+        return
+    
+    st.markdown("---")
+    st.markdown("**📚 Related Topics:**")
+    for rec in recommendations:
+        st.markdown(f"• {rec}")
+
+
 def _load_chunk_tooltip(source: dict) -> str:
     chunk_text = str(source.get("chunk_text") or "").strip()
     if chunk_text:
@@ -416,6 +429,10 @@ elif st.session_state.user_id:
                 st.write(msg.get("answer"))
                 cached_sources = st.session_state.message_sources.get(_source_key(msg), [])
                 _render_source_tags(cached_sources)
+                
+                # Display recommendations
+                recommendations = msg.get("recommendations", [])
+                _render_recommendations(recommendations)
 
         # ---------------- SEND ----------------
         if user_input:
@@ -459,6 +476,7 @@ elif st.session_state.user_id:
                     data = res.json()
                     answer_text = data.get("answer", "No response")
                     sources = data.get("sources", [])
+                    recommendations = data.get("recommendations", [])
 
                     message_key = _source_key({
                         "question": user_input,
@@ -469,6 +487,7 @@ elif st.session_state.user_id:
                     with st.chat_message("assistant"):
                         st.write(answer_text)
                         _render_source_tags(sources)
+                        _render_recommendations(recommendations)
 
                     st.rerun()
 

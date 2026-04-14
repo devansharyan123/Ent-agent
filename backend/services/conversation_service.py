@@ -1,6 +1,7 @@
 from backend.database.models import Conversation, Message
 from backend.services.external_knowledge_service import get_external_answer
 from backend.agents.tools.policy_retrieval_tool import policy_retrieval_tool
+from backend.agents.tools.policy_recommendation_tool import policy_recommendation_tool
 import uuid
 import logging
 
@@ -198,6 +199,24 @@ def send_message(db, conversation_id, question, role, tool="auto"):
     db.commit()
     db.refresh(msg)
 
+    # ========== GENERATE RECOMMENDATIONS ==========
+    logger.debug(f"[DEBUG] Generating recommendations for query: '{question}'")
+    try:
+        rec_result = policy_recommendation_tool(
+            query=question,
+            user_role=role,
+            max_recommendations=3,
+            conversation_id=str(conversation_id)
+        )
+        recommendations = rec_result.get("recommendations", [])
+        logger.debug(f"[DEBUG] Got {len(recommendations)} recommendations")
+    except Exception as e:
+        logger.warning(f"Recommendation generation failed: {e}")
+        recommendations = []
+    
+    # Attach recommendations to message object
+    msg.recommendations = recommendations
+    
     return msg
 
 

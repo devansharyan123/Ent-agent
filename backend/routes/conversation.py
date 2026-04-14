@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+import logging
 
 from backend.database.session import get_db
-from backend.database.models import Document, DocumentChunk
+from backend.database.models import Document, DocumentChunk, User
 from backend.services.conversation_service import (
     start_conversation,
     send_message,
@@ -10,6 +11,9 @@ from backend.services.conversation_service import (
     get_conversations_by_user,
     delete_conversation
 )
+from backend.agents.tools.policy_recommendation_tool import policy_recommendation_tool
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -38,22 +42,56 @@ def message(
 
     return {
         "question": msg.question,
-        "answer": msg.answer
+        "answer": msg.answer,
+        "recommendations": getattr(msg, "recommendations", [])
     }
 
 
 # ---------------- HISTORY ----------------
 @router.get("/history/{conversation_id}")
 def history(conversation_id: str, db: Session = Depends(get_db)):
+    logger.debug(f"[DEBUG] /history endpoint - fetching messages for conversation: {conversation_id}")
+    
     messages = get_history(db, conversation_id)
-
-    return [
-        {
+    
+    # Get conversation and user for role-based recommendations
+    from backend.database.models import Conversation
+    from uuid import UUID
+    conv = db.query(Conversation).filter(
+        Conversation.id == UUID(str(conversation_id))
+    ).first()
+    
+    user_role = "employee"  # default
+    if conv:
+        user = db.query(User).filter(User.id == conv.user_id).first()
+        if user:
+            user_role = user.role.lower() if user.role else "employee"
+    
+    response_messages = []
+    for m in messages:
+        # Regenerate recommendations on-the-fly for history
+        logger.debug(f"[DEBUG] Regenerating recommendations for message: {m.question[:50]}")
+        try:
+            rec_result = policy_recommendation_tool(
+                query=m.question,
+                user_role=user_role,
+                max_recommendations=3,
+                conversation_id=str(conversation_id)
+            )
+            recommendations = rec_result.get("recommendations", [])
+            logger.debug(f"[DEBUG] Got {len(recommendations)} recommendations for history message")
+        except Exception as e:
+            logger.warning(f"Recommendation regeneration failed in history: {e}")
+            recommendations = []
+        
+        response_messages.append({
             "question": m.question,
-            "answer": m.answer
-        }
-        for m in messages
-    ]
+            "answer": m.answer,
+            "recommendations": recommendations
+        })
+    
+    logger.debug(f"[DEBUG] /history endpoint - returning {len(response_messages)} messages with recommendations")
+    return response_messages
 
 
 # ---------------- USER CONVERSATIONS ----------------
