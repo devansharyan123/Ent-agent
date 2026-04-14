@@ -1,0 +1,213 @@
+"""
+Comparison Tool — Tool #4 for Enterprise Knowledge Assistant
+
+Performs document retrieval and end-to-end comparison using Groq LLM.
+Enforces role-based access control and logs to app.tool_logs.
+"""
+
+import json
+import logging
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
+import psycopg2
+from langchain_groq import ChatGroq
+import numpy as np
+
+from backend.config import settings
+from backend.agents.tools.policy_retrieval_tool import get_allowed_categories, _get_psycopg2_conn
+from backend.services.vector_store import get_embedder
+
+logger = logging.getLogger(__name__)
+
+def _log_tool_call(
+    conversation_id: Optional[str],
+    tool_input: Dict,
+    tool_output: Dict,
+) -> None:
+    """Insert a row into app.tool_logs for the comparison tool."""
+    try:
+        conn = _get_psycopg2_conn()
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO app.tool_logs
+                (id, conversation_id, tool_name, tool_input, tool_output, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                str(uuid4()),
+                str(conversation_id) if conversation_id else None,
+                "comparison_tool",
+                json.dumps(tool_input),
+                json.dumps(tool_output),
+                datetime.utcnow(),
+            ),
+        )
+        cur.close()
+        conn.close()
+    except Exception as exc:  # pragma: no cover
+        logger.warning("tool_logs insert failed: %s", exc)
+
+def _get_document_chunks_for_comparison(query_embedding: List[float], allowed_categories: List[str], top_k: int = 20) -> List[Dict[str, Any]]:
+    conn = _get_psycopg2_conn()
+    try:
+        cur = conn.cursor()
+        embedding_array = np.array(query_embedding, dtype=np.float32)
+        cur.execute(
+            """
+            SELECT
+                dc.chunk_text,
+                dc.chunk_index,
+                dc.page_number,
+                d.file_name,
+                d.category,
+                d.file_path
+            FROM vector_store.rag_embeddings  re
+            JOIN vector_store.document_chunks dc ON re.chunk_id = dc.id
+            JOIN app.documents                d  ON dc.document_id = d.id
+            WHERE d.category = ANY(%s)
+              AND d.is_active = TRUE
+            ORDER BY re.embedding <=> %s::vector
+            LIMIT %s
+            """,
+            (allowed_categories, embedding_array, top_k),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        return [
+            {
+                "chunk_text":  row[0],
+                "chunk_index": row[1],
+                "page_number": row[2],
+                "file_name":   row[3],
+                "category":    row[4],
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        logger.error(f"Vector search error: {str(e)}", exc_info=True)
+        raise
+    finally:
+        conn.close()
+
+def _generate_comparison(query: str, chunks: List[Dict[str, Any]]) -> str:
+    # Group by file_name to structure the prompt better
+    files = {}
+    for c in chunks:
+        fname = c['file_name']
+        if fname not in files:
+            files[fname] = []
+        files[fname].append(c)
+
+    context_parts = []
+    for fname, fchunks in files.items():
+        # Sort chunks by naturally index/page to maintain continuity
+        fchunks.sort(key=lambda x: (x.get('page_number') or 0, x.get('chunk_index') or 0))
+        part = f"--- Document: {fname} ---\n"
+        for cx in fchunks:
+            part += f"{cx['chunk_text']}\n\n"
+        context_parts.append(part)
+
+    context = "".join(context_parts)
+
+    system_prompt = (
+        "You are an enterprise policy assistant specializing in comparing documents and policies.\n"
+        "Your task is to analyze the provided excerpts and perform a direct comparison based on the user's focus.\n"
+        "Highlight the key differences, similarities, and distinct attributes of the entities requested by the user.\n"
+        "If a chunk of text is irrelevant to the comparison, ignore it entirely.\n"
+        "Format the output logically. You MUST present the final comparison prominently as a Markdown table.\n"
+        "Always mention the policy document names you are comparing from.\n"
+        "Do NOT include information not present in the excerpts."
+    )
+
+    user_prompt = f"User Request/Comparison: {query}\n\nPolicy Excerpts:\n\n{context}\n\nPlease exclusively extract the differences and similarities requested by the user. Format the main comparison as a Markdown table."
+
+    llm = ChatGroq(
+        api_key=settings.groq_api_key,
+        model_name=settings.llm_model,
+        temperature=0.1, 
+    )
+
+    response = llm.invoke([
+        ("system", system_prompt),
+        ("human", user_prompt)
+    ])
+    return response.content
+
+def comparison_tool(
+    query: str,
+    user_role: str,
+    conversation_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    tool_input = {
+        "query": query,
+        "user_role": user_role,
+    }
+
+    try:
+        allowed_categories = get_allowed_categories(user_role)
+    except ValueError as exc:
+        result = {"answer": str(exc), "sources": [], "retrieved_chunks": []}
+        _log_tool_call(conversation_id, tool_input, result)
+        return result
+
+    try:
+        embedder = get_embedder()
+        query_embedding = embedder.encode(query, convert_to_numpy=True).tolist()
+    except Exception as exc:
+        logger.error(f"Embedding failed: {exc}")
+        result = {"answer": "Embedding error.", "sources": [], "retrieved_chunks": []}
+        _log_tool_call(conversation_id, tool_input, result)
+        return result
+
+    try:
+        # Increase top_k to get enough chunk content to form a good comparison
+        chunks = _get_document_chunks_for_comparison(query_embedding, allowed_categories, top_k=20)
+    except Exception as exc:
+        logger.error(f"Retrieval failed: {exc}")
+        result = {"answer": "Document search unavailable.", "sources": [], "retrieved_chunks": []}
+        _log_tool_call(conversation_id, tool_input, result)
+        return result
+
+    if not chunks:
+        result = {
+            "answer": "No relevant policy documents found to compare in your access scope.",
+            "sources": [],
+            "retrieved_chunks": [],
+        }
+        _log_tool_call(conversation_id, tool_input, result)
+        return result
+
+    try:
+        answer = _generate_comparison(query, chunks)
+    except Exception as exc:
+        logger.error(f"LLM comparison failed: {exc}")
+        answer = "Comparison generation failed. Please try again."
+
+    seen = set()
+    unique_sources = []
+    for c in chunks:
+        key = (c["file_name"], c["category"])
+        if key not in seen:
+            seen.add(key)
+            unique_sources.append({"file_name": c["file_name"], "category": c["category"]})
+
+    result = {
+        "answer": answer,
+        "sources": unique_sources,
+        "retrieved_chunks": [c["chunk_text"] for c in chunks],
+    }
+
+    _log_tool_call(
+        conversation_id,
+        tool_input,
+        {
+            "answer": answer,
+            "sources_count": len(unique_sources),
+            "chunks_count": len(result["retrieved_chunks"]),
+        },
+    )
+
+    return result

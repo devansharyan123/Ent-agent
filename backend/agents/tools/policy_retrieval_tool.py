@@ -181,24 +181,12 @@ def _vector_search(
         conn.close()
 
 def _normalize_answer(text: str) -> str:
+    # Previously, this aggressively stripped bullets and newlines, ruining LLM formatting.
+    # We now pass the LLM output basically raw, just stripping any literal 'Source: ...' hallucinated by the model.
     if not text:
         return text
-    text = re.sub(r'(?i)\bsource\b:.*', '', text)
-    text = re.sub(r'\s*[\u2022\*\-]\s*', '\n', text)
-    text = re.sub(r'\n?\s*\d+[.\)]\s*', '\n', text)
-    text = re.sub(r'\n+', '\n', text).strip()
-    parts = []
-    for line in text.splitlines():
-        s = line.strip()
-        if not s:
-            continue
-        s = s.strip(' \t\n\r:;,-')
-        if not s.endswith(('.', '!', '?')):
-            s = s + '.'
-        s = s[0].upper() + s[1:] if len(s) > 1 else s.upper()
-        parts.append(s)
-
-    return ' '.join(parts)
+    text = re.sub(r'(?i)\bSource:.*\n?', '', text)
+    return text.strip()
 
 def _generate_answer(query: str, chunks: List[Dict[str, Any]]) -> str:
     """
@@ -206,22 +194,22 @@ def _generate_answer(query: str, chunks: List[Dict[str, Any]]) -> str:
 
     The prompt strictly instructs the model NOT to invent policy rules.
     """
-    context = "\n\n".join(
-        f"[Source: {c['file_name']}, page {c['page_number']}]\n{c['chunk_text']}"
-        for c in chunks
-    )
+    context_parts = []
+    for c in chunks:
+        context_parts.append(f"--- Document: {c['file_name']}, Page: {c['page_number']} ---\n{c['chunk_text']}\n")
+    context = "\n".join(context_parts)
 
     system_prompt = (
         "You are an enterprise policy assistant.\n"
-        "Answer the user's question using ONLY the policy excerpts provided below.\n"
+        "Answer the user's question using ONLY the provided policy excerpts.\n"
         "Do NOT invent or infer policy rules that are not present in the excerpts.\n"
-        "When listing multiple rules, use bullet points.\n"
+        "When listing multiple rules, use bullet points clearly.\n"
         "Always mention the policy document name when referencing a rule.\n"
-        "If the answer is not contained in the excerpts, respond exactly with:\n"
-        "\"The requested policy information is not available in your accessible documents.\""
+        "If the excerpts do not contain the answer, you must respond with exactly:\n"
+        "The requested policy information is not available in your accessible documents."
     )
 
-    user_prompt = f"Policy excerpts:\n\n{context}\n\nQuestion: {query}"
+    user_prompt = f"Policy Excerpts:\n\n{context}\n\nQuestion: {query}"
 
     llm = ChatGroq(
         api_key=settings.groq_api_key,
@@ -229,8 +217,12 @@ def _generate_answer(query: str, chunks: List[Dict[str, Any]]) -> str:
         temperature=0.0,   # deterministic for policy answers
     )
 
-    response = llm.invoke(f"{system_prompt}\n\n{user_prompt}")
+    response = llm.invoke([
+        ("system", system_prompt),
+        ("human", user_prompt)
+    ])
     return response.content
+
 
 
 # ---------------------------------------------------------------------------

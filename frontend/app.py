@@ -5,7 +5,7 @@ BASE_URL = "http://127.0.0.1:8000"
 
 st.set_page_config(page_title="Enterprise AI Assistant", layout="wide")
 
-# --- styling (fix message area height so input stays anchored at bottom)
+# --- styling (combined custom CSS)
 st.markdown(
     """
     <style>
@@ -14,6 +14,27 @@ st.markdown(
     #MainMenu {visibility: hidden;} footer {visibility: hidden}
     /* Make the expander content scrollable so input remains fixed below it */
     .stExpander .stExpanderContent { max-height: 62vh; overflow-y: auto; }
+
+    .stMarkdown table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1.5rem 0;
+    }
+    .stMarkdown th, .stMarkdown td {
+        border: 1px solid rgba(150, 150, 150, 0.4) !important;
+        padding: 12px !important;
+    }
+    .stMarkdown th {
+        background-color: rgba(150, 150, 150, 0.15) !important;
+        font-weight: 700 !important;
+    }
+    .stMarkdown tr:nth-child(even) {
+        background-color: rgba(150, 150, 150, 0.05) !important;
+    }
+    .stMarkdown tr:hover {
+        background-color: rgba(150, 150, 150, 0.1) !important;
+        transition: background-color 0.2s ease-in-out;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -145,7 +166,7 @@ elif st.session_state.user_id:
     if not st.session_state.conversation_id:
         st.warning("Select or create a conversation")
     else:
-        # Load history
+        # ---------------- LOAD HISTORY ----------------
         messages = []
         try:
             res = requests.get(f"{BASE_URL}/chat/history/{st.session_state.conversation_id}")
@@ -162,7 +183,6 @@ elif st.session_state.user_id:
                 with st.chat_message("user"):
                     st.write(msg.get("question"))
                 with st.chat_message("assistant"):
-                    # If backend provides 'tool' for that message, show it; otherwise show only the answer.
                     tool_used = msg.get("tool")
                     answer = msg.get("answer", "No response")
                     if tool_used:
@@ -170,8 +190,15 @@ elif st.session_state.user_id:
                     else:
                         st.write(answer)
 
-        # Bottom row: tool dropdown + chat input (anchored because expander is scrollable)
-        tool_options = ["Auto (RAG first)", "Policies (RAG)", "LLM (External)"]
+        # Bottom row: single tool dropdown + chat input (anchored because expander is scrollable)
+        tool_options = [
+            "Auto (RAG first)",
+            "Policies (RAG)",
+            "LLM (External)",
+            "Document Summary",
+            "Policy Comparison",
+            "Agent Brain",
+        ]
         try:
             default_index = tool_options.index(st.session_state.tool_select)
         except ValueError:
@@ -189,7 +216,15 @@ elif st.session_state.user_id:
             with st.chat_message("user"):
                 st.write(user_input)
             try:
-                tool_map = {"Auto (RAG first)": "auto", "Policies (RAG)": "rag", "LLM (External)": "llm"}
+                # map UI labels to a simple tool param
+                tool_map = {
+                    "Auto (RAG first)": "auto",
+                    "Policies (RAG)": "rag",
+                    "LLM (External)": "llm",
+                    "Document Summary": "summary",
+                    "Policy Comparison": "compare",
+                    "Agent Brain": "agent",
+                }
                 selected_tool = tool_map.get(st.session_state.tool_select, "auto")
                 res = requests.post(
                     f"{BASE_URL}/chat/message",
