@@ -85,7 +85,6 @@ def _log_tool_call(
     """Insert a row into app.tool_logs (best-effort, never raises)."""
     try:
         conn = _get_psycopg2_conn()
-        conn.autocommit = True
         cur = conn.cursor()
         cur.execute(
             """
@@ -102,6 +101,7 @@ def _log_tool_call(
                 datetime.utcnow(),
             ),
         )
+        conn.commit()
         cur.close()
         conn.close()
     except Exception as exc:  # pragma: no cover
@@ -205,8 +205,8 @@ def _generate_answer(query: str, chunks: List[Dict[str, Any]]) -> str:
         "Do NOT invent or infer policy rules that are not present in the excerpts.\n"
         "When listing multiple rules, use bullet points clearly.\n"
         "Always mention the policy document name when referencing a rule.\n"
-        "If the excerpts do not contain the answer, you must respond with exactly:\n"
-        "The requested policy information is not available in your accessible documents."
+        "If the exact answer is not present but relevant information is, provide that relevant information.\n"
+        "If no relevant information exists at all, clearly state that the policy documents do not cover this."
     )
 
     user_prompt = f"Policy Excerpts:\n\n{context}\n\nQuestion: {query}"
