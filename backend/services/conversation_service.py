@@ -126,6 +126,29 @@ def send_message(db, conversation_id, question, role, tool="auto"):
             logger.exception("Comparison sequence failed (tool=compare)")
             answer = "Document comparison failed. Please try again later."
 
+    elif str(tool).lower() == "recommend":
+        # Recommendation Tool
+        try:
+            from backend.agents.tools.recommendation_tool import recommendation_tool
+            recommend_result = recommendation_tool(
+                query=question,
+                user_role=role,
+                conversation_id=str(conversation_id)
+            )
+            answer = (recommend_result.get("answer") or "").strip()
+            if not answer:
+                answer = "No relevant policy documents found to recommend in your access scope."
+            sources = recommend_result.get("sources", [])
+            if sources:
+                citations = []
+                for s in sources:
+                    fn = s.get("file_name", "Unknown")
+                    citations.append(f"- {fn}")
+                answer = f"{answer}\n\nSources:\n" + "\n".join(citations)
+        except Exception:
+            logger.exception("Recommendation sequence failed (tool=recommend)")
+            answer = "Document recommendation failed. Please try again later."
+
     elif str(tool).lower() == "agent":
         # LangGraph AgentBrain orchestration
         try:

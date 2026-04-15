@@ -354,7 +354,7 @@ elif st.session_state.user_id:
         col_tool, col_input = st.columns([1, 9])
 
         with col_tool:
-            options = ["Auto (RAG first)", "Policies (RAG)", "LLM (External)", "Document Summary", "Policy Comparison", "Agent Brain"]
+            options = ["Auto (RAG first)", "Policies (RAG)", "LLM (External)", "Document Summary", "Policy Comparison", "Policy Recommendation", "Agent Brain"]
             # disable selection when locked to prevent changes
             try:
                 tool_choice = st.selectbox(
@@ -430,6 +430,7 @@ elif st.session_state.user_id:
                     "LLM (External)": "llm",
                     "Document Summary": "summary",
                     "Policy Comparison": "compare",
+                    "Policy Recommendation": "recommend",
                     "Agent Brain": "agent"
                 }
                 selected_tool = tool_map.get(st.session_state.tool_select, "auto")
