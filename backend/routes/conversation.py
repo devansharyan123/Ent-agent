@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.database.session import get_db
+from backend.database.models import Document, DocumentChunk
 from backend.services.conversation_service import (
     start_conversation,
     send_message,
@@ -81,3 +82,28 @@ def delete(conv_id: str = None, conversation_id: str = None, db: Session = Depen
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     return {"message": "Deleted successfully"}
+
+
+# ---------------- CHUNK PREVIEW ----------------
+@router.get("/chunk-preview")
+def chunk_preview(file_name: str, chunk_index: int, db: Session = Depends(get_db)):
+    row = (
+        db.query(DocumentChunk.chunk_text)
+        .join(Document, Document.id == DocumentChunk.document_id)
+        .filter(
+            Document.file_name == file_name,
+            DocumentChunk.chunk_index == chunk_index,
+            Document.is_active == True,
+        )
+        .order_by(DocumentChunk.created_at.desc())
+        .first()
+    )
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Chunk not found")
+
+    return {
+        "file_name": file_name,
+        "chunk_index": chunk_index,
+        "chunk_text": row[0],
+    }

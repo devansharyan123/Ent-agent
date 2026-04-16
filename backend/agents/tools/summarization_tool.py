@@ -28,7 +28,6 @@ def _log_tool_call(
     """Insert a row into app.tool_logs for the summarization tool."""
     try:
         conn = _get_psycopg2_conn()
-        conn.autocommit = True
         cur = conn.cursor()
         cur.execute(
             """
@@ -45,6 +44,7 @@ def _log_tool_call(
                 datetime.utcnow(),
             ),
         )
+        conn.commit()
         cur.close()
         conn.close()
     except Exception as exc:  # pragma: no cover
