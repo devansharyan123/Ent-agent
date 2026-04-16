@@ -8,7 +8,7 @@ to app.tool_logs for full observability.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 import re
@@ -98,7 +98,7 @@ def _log_tool_call(
                 "policy_retrieval_tool",
                 json.dumps(tool_input),
                 json.dumps(tool_output),
-                datetime.utcnow(),
+                datetime.now(UTC)
             ),
         )
         conn.commit()
@@ -232,7 +232,7 @@ def _generate_answer(query: str, chunks: List[Dict[str, Any]]) -> str:
 def policy_retrieval_tool(
     query: str,
     user_role: str,
-    top_k: int = 5,
+    top_k: int = 10,
     conversation_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
