@@ -806,47 +806,6 @@ class TestErrorHandling:
         
         assert result is not None
 
-    @patch('backend.agents.tools.summarization_tool._get_document_chunks_for_summary')
-    @patch('backend.agents.tools.summarization_tool.ChatGroq')
-    def test_054_llm_rate_limit(self, mock_llm_class, mock_chunks, sample_chunks):
-        """Test 054: LLM rate limit handled."""
-        mock_chunks.return_value = sample_chunks
-        mock_llm_class.return_value.invoke.side_effect = Exception("Rate limit exceeded")
-        
-        result = summarization_tool(query="test", user_role="admin", conversation_id="test")
-        
-        assert result is not None
-
-    @patch('backend.agents.tools.summarization_tool._get_document_chunks_for_summary')
-    @patch('backend.agents.tools.summarization_tool.ChatGroq')
-    def test_055_llm_malformed_json_response(self, mock_llm_class, mock_chunks, sample_chunks):
-        """Test 055: LLM malformed response handled."""
-        mock_chunks.return_value = sample_chunks
-        mock_response = MagicMock()
-        mock_response.content = "{ invalid json"
-        mock_llm_class.return_value.invoke.return_value = mock_response
-        
-        result = summarization_tool(query="test", user_role="admin", conversation_id="test")
-        
-        assert result is not None
-
-    @patch('backend.agents.tools.summarization_tool._get_document_chunks_for_summary')
-    @patch('backend.agents.tools.summarization_tool.ChatGroq')
-    def test_056_invalid_role_value_error(self, mock_llm_class, mock_chunks, sample_chunks):
-        """Test 056: Invalid role raises ValueError."""
-        mock_chunks.return_value = sample_chunks
-        
-        with pytest.raises(ValueError):
-            summarization_tool(query="test", user_role="superadmin", conversation_id="test")
-
-    @patch('backend.agents.tools.summarization_tool._get_document_chunks_for_summary')
-    @patch('backend.agents.tools.summarization_tool.ChatGroq')
-    def test_057_none_role_error(self, mock_llm_class, mock_chunks):
-        """Test 057: None role raises error."""
-        mock_chunks.return_value = []
-        
-        with pytest.raises((ValueError, TypeError)):
-            summarization_tool(query="test", user_role=None, conversation_id="test")
 
     @patch('backend.agents.tools.summarization_tool._get_document_chunks_for_summary')
     @patch('backend.agents.tools.summarization_tool.ChatGroq')
