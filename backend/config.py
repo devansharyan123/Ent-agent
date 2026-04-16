@@ -25,5 +25,10 @@ class Settings:
     max_conversation_history: int = 10  # messages to keep in context
     cache_ttl: int = 3600  # seconds
 
+# LangSmith Configuration
+    langchain_tracing_v2: str = os.getenv("LANGCHAIN_TRACING_V2", "false")
+    langchain_endpoint: str = os.getenv("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
+    langchain_api_key: str = os.getenv("LANGCHAIN_API_KEY", "")
+    langchain_project: str = os.getenv("LANGCHAIN_PROJECT", "ent-agent")
 
 settings = Settings()
