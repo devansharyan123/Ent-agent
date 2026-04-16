@@ -1,13 +1,13 @@
 """
-Summarization Tool — Tool #2 for Enterprise Knowledge Assistant
+Recommendation Tool — Tool #5 for Enterprise Knowledge Assistant
 
-Performs document retrieval and end-to-end summarization using Groq LLM.
+Performs document retrieval and uses Groq LLM to suggest related policies or documents.
 Enforces role-based access control and logs to app.tool_logs.
 """
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 import psycopg2
@@ -20,15 +20,12 @@ from backend.services.vector_store import get_embedder
 
 logger = logging.getLogger(__name__)
 
-# Valid user roles
-VALID_ROLES = {"admin", "hr", "employee"}
-
 def _log_tool_call(
     conversation_id: Optional[str],
     tool_input: Dict,
     tool_output: Dict,
 ) -> None:
-    """Insert a row into app.tool_logs for the summarization tool."""
+    """Insert a row into app.tool_logs for the recommendation tool."""
     try:
         conn = _get_psycopg2_conn()
         cur = conn.cursor()
@@ -41,10 +38,10 @@ def _log_tool_call(
             (
                 str(uuid4()),
                 str(conversation_id) if conversation_id else None,
-                "summarization_tool",
+                "recommendation_tool",
                 json.dumps(tool_input),
                 json.dumps(tool_output),
-                datetime.now(timezone.utc),
+                datetime.utcnow(),
             ),
         )
         conn.commit()
@@ -53,7 +50,7 @@ def _log_tool_call(
     except Exception as exc:  # pragma: no cover
         logger.warning("tool_logs insert failed: %s", exc)
 
-def _get_document_chunks_for_summary(query_embedding: List[float], allowed_categories: List[str], top_k: int = 15) -> List[Dict[str, Any]]:
+def _get_document_chunks_for_recommendation(query_embedding: List[float], allowed_categories: List[str], top_k: int = 15) -> List[Dict[str, Any]]:
     conn = _get_psycopg2_conn()
     try:
         cur = conn.cursor()
@@ -90,12 +87,12 @@ def _get_document_chunks_for_summary(query_embedding: List[float], allowed_categ
             for row in rows
         ]
     except Exception as e:
-        logger.error(f"Vector search error: {str(e)}", exc_info=True)
+        logger.error(f"Vector search error: {str(e)}")
         raise
     finally:
         conn.close()
 
-def _generate_summary(query: str, chunks: List[Dict[str, Any]]) -> str:
+def _generate_recommendation(query: str, chunks: List[Dict[str, Any]]) -> str:
     # Group by file_name to structure the prompt better
     files = {}
     for c in chunks:
@@ -106,31 +103,28 @@ def _generate_summary(query: str, chunks: List[Dict[str, Any]]) -> str:
 
     context_parts = []
     for fname, fchunks in files.items():
-        # Sort chunks by naturally index/page to maintain continuity
-        fchunks.sort(key=lambda x: (x.get('page_number') or 0, x.get('chunk_index') or 0))
         part = f"--- Document: {fname} ---\n"
         for cx in fchunks:
-            part += f"{cx['chunk_text']}\n\n"
+            part += f"{cx['chunk_text'][:200]}...\n" # Only need snippets to know topics
         context_parts.append(part)
 
     context = "".join(context_parts)
 
     system_prompt = (
-        "You are an enterprise policy assistant.\n"
-        "Your task is to analyze the provided policy excerpts and provide a structured, concise summary STRICTLY related to the user's request.\n"
-        "IGNORE any excerpts or topics that do not directly relate to the user's intended topic.\n"
-        "Highlight the key points, main rules, and critical information for that specific topic.\n"
-        "Organize the summary logically, using clear headings or bullet points.\n"
-        "Always mention the policy document names you are summarizing from.\n"
-        "If none of the excerpts address the user's request, state that no relevant information was found."
+        "You are an enterprise policy assistant specializing in recommending follow-up topics.\n"
+        "Your task is to analyze the provided document excerpts and suggest at most 3 relevant policies or topics as follow-up questions.\n"
+        "Format your response as a clear bulleted list.\n"
+        "Each bullet point must follow this EXACT format: '- Would you like to know more about [Policy Name]?'\n"
+        "DO NOT provide any factual details, summaries, or descriptions of the policies.\n"
+        "Keep the output extremely concise. Only the bulleted questions."
     )
 
-    user_prompt = f"User Request: {query}\n\nPolicy Excerpts:\n\n{context}\n\nPlease summarize ONLY the points related to the User Request."
+    user_prompt = f"User Query: {query}\n\nAvailable Document Excerpts context:\n\n{context}\n\nPlease suggest relevant policies."
 
     llm = ChatGroq(
         api_key=settings.groq_api_key,
         model_name=settings.llm_model,
-        temperature=0.2,
+        temperature=0.3, # slightly higher temp for suggestions
     )
 
     response = llm.invoke([
@@ -139,32 +133,15 @@ def _generate_summary(query: str, chunks: List[Dict[str, Any]]) -> str:
     ])
     return response.content
 
-def summarization_tool(
+def recommendation_tool(
     query: str,
     user_role: str,
     conversation_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    # Validate role inputs - raise for invalid roles
-    if user_role is None:
-        raise ValueError("user_role cannot be None")
-    
-    if user_role not in VALID_ROLES:
-        raise ValueError(f"Invalid role: {user_role}. Must be one of {VALID_ROLES}")
-    
     tool_input = {
         "query": query,
         "user_role": user_role,
     }
-
-    # Handle empty/None query gracefully (don't raise)
-    if not query:
-        result = {
-            "answer": "Query cannot be empty. Please provide a valid query.",
-            "sources": [],
-            "retrieved_chunks": [],
-        }
-        _log_tool_call(conversation_id, tool_input, result)
-        return result
 
     try:
         allowed_categories = get_allowed_categories(user_role)
@@ -183,8 +160,7 @@ def summarization_tool(
         return result
 
     try:
-        # Increase top_k to get enough chunk content to form a good summary
-        chunks = _get_document_chunks_for_summary(query_embedding, allowed_categories, top_k=20)
+        chunks = _get_document_chunks_for_recommendation(query_embedding, allowed_categories, top_k=15)
     except Exception as exc:
         logger.error(f"Retrieval failed: {exc}")
         result = {"answer": "Document search unavailable.", "sources": [], "retrieved_chunks": []}
@@ -193,7 +169,7 @@ def summarization_tool(
 
     if not chunks:
         result = {
-            "answer": "No relevant policy documents found to summarize in your access scope.",
+            "answer": "No relevant policy documents found to recommend in your access scope.",
             "sources": [],
             "retrieved_chunks": [],
         }
@@ -201,31 +177,23 @@ def summarization_tool(
         return result
 
     try:
-        answer = _generate_summary(query, chunks)
+        answer = _generate_recommendation(query, chunks)
     except Exception as exc:
-        logger.error(f"LLM summarization failed: {exc}")
-        answer = "Summarization generation failed. Please try again."
+        logger.error(f"LLM recommendation failed: {exc}")
+        answer = "Recommendation generation failed. Please try again."
 
-    # Format sources for return payload with field validation
     seen = set()
     unique_sources = []
     for c in chunks:
-        # Validate required fields exist before accessing
-        if "file_name" in c and "category" in c:
-            key = (c["file_name"], c["category"])
-            if key not in seen:
-                seen.add(key)
-                unique_sources.append({
-                    "file_name": c["file_name"],
-                    "category": c["category"]
-                })
-        else:
-            logger.warning(f"Chunk missing required fields: {c.keys()}")
+        key = (c["file_name"], c["category"])
+        if key not in seen:
+            seen.add(key)
+            unique_sources.append({"file_name": c["file_name"], "category": c["category"]})
 
     result = {
         "answer": answer,
         "sources": unique_sources,
-        "retrieved_chunks": [c["chunk_text"] for c in chunks if "chunk_text" in c],
+        "retrieved_chunks": [c["chunk_text"] for c in chunks],
     }
 
     _log_tool_call(

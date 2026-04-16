@@ -2,6 +2,10 @@
 from backend.database.models import Conversation, Message
 from backend.services.external_knowledge_service import get_external_answer
 from backend.agents.tools.policy_retrieval_tool import policy_retrieval_tool
+from backend.agents.tools.summarization_tool import summarization_tool
+from backend.agents.tools.comparison_tool import comparison_tool
+from backend.agents.tools.recommendation_tool import recommendation_tool
+from backend.agents.brain import get_agent
 import uuid
 import logging
 
@@ -106,20 +110,18 @@ def send_message(db, conversation_id, question, role, tool="auto"):
     # =========================
     elif str(tool).lower() == "summary":
         try:
-            from backend.agents.tools.summarization_tool import summarization_tool
-
-            result = summarization_tool(
+            summary_result = summarization_tool(
                 query=question,
                 user_role=role,
                 conversation_id=str(conversation_id)
             )
 
-            base_answer = (result.get("answer") or "").strip()
+            base_answer = (summary_result.get("answer") or "").strip()
 
             if not base_answer:
                 base_answer = "No relevant policy documents found to summarize."
 
-            sources_block = format_sources(result.get("sources"))
+            sources_block = format_sources(summary_result.get("sources"))
 
             answer = base_answer + sources_block
 
@@ -133,34 +135,55 @@ def send_message(db, conversation_id, question, role, tool="auto"):
     # =========================
     elif str(tool).lower() == "compare":
         try:
-            from backend.agents.tools.comparison_tool import comparison_tool
-
-            result = comparison_tool(
+            compare_result = comparison_tool(
                 query=question,
                 user_role=role,
                 conversation_id=str(conversation_id)
             )
 
-            base_answer = (result.get("answer") or "").strip()
+            answer = (compare_result.get("answer") or "").strip()
 
-            if not base_answer:
-                base_answer = "No relevant policy documents found to compare."
+            if not answer:
+                answer = "No relevant comparison could be generated."
 
-            sources_block = format_sources(result.get("sources"))
-
-            answer = base_answer + sources_block
+            sources_block = format_sources(compare_result.get("sources"))
+            answer = answer + sources_block
 
         except Exception:
-            logger.exception("Compare failed")
-            answer = "Document comparison failed."
+            logger.exception("Comparison failed")
+            answer = "Comparison failed. Please try again later."
 
+    elif str(tool).lower() == "recommend":
+        # Recommendation Tool
+        try:
+            recommend_result = recommendation_tool(
+                query=question,
+                user_role=role,
+                conversation_id=str(conversation_id)
+            )
+            answer = (recommend_result.get("answer") or "").strip()
+            if not answer:
+                answer = "No relevant policy documents found to recommend in your access scope."
+            sources = recommend_result.get("sources", [])
+            if sources:
+                citations = []
+                for s in sources:
+                    fn = s.get("file_name", "Unknown")
+                    citations.append(f"- {fn}")
+                answer = f"{answer}\n\nSources:\n" + "\n".join(citations)
+        except Exception:
+            logger.exception("Recommendation sequence failed (tool=recommend)")
+            answer = "Document recommendation failed. Please try again later."
 
-    # =========================
-    # AGENT
-    # =========================
     elif str(tool).lower() == "agent":
         try:
-            from backend.agents.brain import get_agent
+            agent_result = get_agent().execute(query=question, user_role=role)
+            answer = agent_result.get("answer", "Agent failed to generate an answer.")
+            if not answer or not answer.strip():
+                answer = "Agent generated an empty response."
+        except Exception:
+            logger.exception("Agent call failed (tool=agent)")
+            answer = "Agent processing failed. Please try again later."
 
             result = get_agent().execute(query=question, user_role=role)
             answer = result.get("answer", "Agent failed")
@@ -197,10 +220,34 @@ def send_message(db, conversation_id, question, role, tool="auto"):
             except Exception:
                 answer = "Both RAG and LLM failed."
 
+    is_external_tool = str(tool).lower() in ["llm", "recommend"]
+    
+    # We show recommendations only if:
+    # 1. It is not an external-only tool (like pure LLM)
+    # 2. It is not the recommendation tool itself
+    # 3. We didn't fall back to LLM in auto mode (if answer contains the fallback string)
+    no_policy_messages = [
+        "No relevant policy found in your accessible document scope.",
+        "The requested policy information is not available in your accessible documents."
+    ]
+    is_fallback = any(msg in (answer or "") for msg in no_policy_messages)
+    
+    if not is_external_tool and not is_fallback and answer:
+        try:
+            recommend_result = recommendation_tool(
+                query=question,
+                user_role=role,
+                conversation_id=str(conversation_id)
+            )
+            rec_text = (recommend_result.get("answer") or "").strip()
+            
+            # Additional check: don't append if the tool basically said 'no topics found'
+            if rec_text and "no relevant policy documents found" not in rec_text.lower():
+                header = "### Other questions you would like to know about"
+                answer = f"{answer}\n\n{header}\n{rec_text}"
+        except Exception:
+            logger.warning("Failed to append recommendations to response")
 
-    # =========================
-    # SAVE MESSAGE
-    # =========================
     msg = Message(
         id=uuid.uuid4(),
         conversation_id=conversation_id,
