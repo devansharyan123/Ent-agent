@@ -1,23 +1,32 @@
-# backend/database/session.py
-
+import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = "postgresql://postgres:password@localhost/enterprise_ai"
-# ⚠️ change password + db name if needed
+# Load .env properly
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+load_dotenv(ENV_PATH)
 
-engine = create_engine(DATABASE_URL)
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL not found in backend/.env")
 
+# Create engine
+engine = create_engine(DATABASE_URL, future=True)
+
+# Session
 SessionLocal = sessionmaker(
-    autocommit=False,
+    bind=engine,
     autoflush=False,
-    bind=engine
+    autocommit=False,
+    future=True
 )
 
+# Base for models
 Base = declarative_base()
 
 
-# ✅ THIS IS THE IMPORTANT FUNCTION
 def get_db():
     db = SessionLocal()
     try:
