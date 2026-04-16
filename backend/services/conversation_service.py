@@ -200,6 +200,34 @@ def send_message(db, conversation_id, question, role, tool="auto"):
                 logger.exception("LLM fallback failed")
                 answer = "Both policy retrieval and LLM failed. Please try again later."
 
+    is_external_tool = str(tool).lower() in ["llm", "recommend"]
+    # Detect if auto-mode fallback to LLM occurred
+    used_llm_fallback = False
+    if str(tool).lower() == "auto":
+        no_policy_messages = [
+            "No relevant policy found in your accessible document scope.",
+            "The requested policy information is not available in your accessible documents."
+        ]
+        if any(msg in (answer or "") for msg in no_policy_messages) or "LLM fallback" in (answer or ""):
+            # This is a bit heuristic but works for our current strings
+            used_llm_fallback = True
+
+    if not is_external_tool and not used_llm_fallback and answer:
+        try:
+            from backend.agents.tools.recommendation_tool import recommendation_tool
+            recommend_result = recommendation_tool(
+                query=question,
+                user_role=role,
+                conversation_id=str(conversation_id)
+            )
+            rec_text = (recommend_result.get("answer") or "").strip()
+            # If the recommendation tool itself returned 'no docs found', we don't append the header
+            if rec_text and "no relevant policy documents found" not in rec_text.lower():
+                header = "**Other questions you would like to know about**"
+                answer = f"{answer}\n\n{header}\n{rec_text}"
+        except Exception:
+            logger.warning("Failed to append recommendations to response")
+
     msg = Message(
         id=uuid.uuid4(),
         conversation_id=conversation_id,

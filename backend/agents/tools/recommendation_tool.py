@@ -111,11 +111,12 @@ def _generate_recommendation(query: str, chunks: List[Dict[str, Any]]) -> str:
     context = "".join(context_parts)
 
     system_prompt = (
-        "You are an enterprise policy assistant specializing in recommending documents and policies.\n"
-        "Your task is to analyze the provided document excerpts and suggest relevant policies or topics based on the user's query.\n"
-        "DO NOT directly answer the user's question. Instead, provide a curated list of related policy topics or document names they should look into.\n"
-        "For example, if the user asks about 'leave', suggest 'Leave policy', 'Work-from-home policy', 'Holiday calendar', etc., IF they exist in the context.\n"
-        "Format your response as a professional, bulleted recommendation list."
+        "You are an enterprise policy assistant specializing in recommending follow-up topics.\n"
+        "Your task is to analyze the provided document excerpts and suggest at most 3 relevant policies or topics as follow-up questions.\n"
+        "Format your response as a clear bulleted list.\n"
+        "Each bullet point must follow this EXACT format: '- Would you like to know more about [Policy Name]?'\n"
+        "DO NOT provide any factual details, summaries, or descriptions of the policies.\n"
+        "Keep the output extremely concise. Only the bulleted questions."
     )
 
     user_prompt = f"User Query: {query}\n\nAvailable Document Excerpts context:\n\n{context}\n\nPlease suggest relevant policies."
