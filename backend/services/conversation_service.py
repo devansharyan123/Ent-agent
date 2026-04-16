@@ -1,6 +1,10 @@
 from backend.database.models import Conversation, Message
 from backend.services.external_knowledge_service import get_external_answer
 from backend.agents.tools.policy_retrieval_tool import policy_retrieval_tool
+from backend.agents.tools.summarization_tool import summarization_tool
+from backend.agents.tools.comparison_tool import comparison_tool
+from backend.agents.tools.recommendation_tool import recommendation_tool
+from backend.agents.brain import get_agent
 import uuid
 import logging
 
@@ -83,7 +87,6 @@ def send_message(db, conversation_id, question, role, tool="auto"):
     elif str(tool).lower() == "summary":
         # Summarization Tool
         try:
-            from backend.agents.tools.summarization_tool import summarization_tool
             summary_result = summarization_tool(
                 query=question,
                 user_role=role,
@@ -106,7 +109,6 @@ def send_message(db, conversation_id, question, role, tool="auto"):
     elif str(tool).lower() == "compare":
         # Comparison Tool
         try:
-            from backend.agents.tools.comparison_tool import comparison_tool
             compare_result = comparison_tool(
                 query=question,
                 user_role=role,
@@ -129,7 +131,6 @@ def send_message(db, conversation_id, question, role, tool="auto"):
     elif str(tool).lower() == "recommend":
         # Recommendation Tool
         try:
-            from backend.agents.tools.recommendation_tool import recommendation_tool
             recommend_result = recommendation_tool(
                 query=question,
                 user_role=role,
@@ -152,7 +153,6 @@ def send_message(db, conversation_id, question, role, tool="auto"):
     elif str(tool).lower() == "agent":
         # LangGraph AgentBrain orchestration
         try:
-            from backend.agents.brain import get_agent
             agent_result = get_agent().execute(query=question, user_role=role)
             answer = agent_result.get("answer", "Agent failed to generate an answer.")
             if not answer or not answer.strip():
@@ -201,29 +201,29 @@ def send_message(db, conversation_id, question, role, tool="auto"):
                 answer = "Both policy retrieval and LLM failed. Please try again later."
 
     is_external_tool = str(tool).lower() in ["llm", "recommend"]
-    # Detect if auto-mode fallback to LLM occurred
-    used_llm_fallback = False
-    if str(tool).lower() == "auto":
-        no_policy_messages = [
-            "No relevant policy found in your accessible document scope.",
-            "The requested policy information is not available in your accessible documents."
-        ]
-        if any(msg in (answer or "") for msg in no_policy_messages) or "LLM fallback" in (answer or ""):
-            # This is a bit heuristic but works for our current strings
-            used_llm_fallback = True
-
-    if not is_external_tool and not used_llm_fallback and answer:
+    
+    # We show recommendations only if:
+    # 1. It is not an external-only tool (like pure LLM)
+    # 2. It is not the recommendation tool itself
+    # 3. We didn't fall back to LLM in auto mode (if answer contains the fallback string)
+    no_policy_messages = [
+        "No relevant policy found in your accessible document scope.",
+        "The requested policy information is not available in your accessible documents."
+    ]
+    is_fallback = any(msg in (answer or "") for msg in no_policy_messages)
+    
+    if not is_external_tool and not is_fallback and answer:
         try:
-            from backend.agents.tools.recommendation_tool import recommendation_tool
             recommend_result = recommendation_tool(
                 query=question,
                 user_role=role,
                 conversation_id=str(conversation_id)
             )
             rec_text = (recommend_result.get("answer") or "").strip()
-            # If the recommendation tool itself returned 'no docs found', we don't append the header
+            
+            # Additional check: don't append if the tool basically said 'no topics found'
             if rec_text and "no relevant policy documents found" not in rec_text.lower():
-                header = "**Other questions you would like to know about**"
+                header = "### Other questions you would like to know about"
                 answer = f"{answer}\n\n{header}\n{rec_text}"
         except Exception:
             logger.warning("Failed to append recommendations to response")
