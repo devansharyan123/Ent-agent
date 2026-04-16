@@ -5,9 +5,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
-from backend.database.session import Base
-from pgvector.sqlalchemy import Vector
+import uuid
+from database.session import Base
+
 
 class User(Base):
     __tablename__ = "users"
