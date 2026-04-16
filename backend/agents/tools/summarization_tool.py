@@ -7,7 +7,7 @@ Enforces role-based access control and logs to app.tool_logs.
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 import psycopg2
@@ -19,9 +19,6 @@ from backend.agents.tools.policy_retrieval_tool import get_allowed_categories, _
 from backend.services.vector_store import get_embedder
 
 logger = logging.getLogger(__name__)
-
-# Valid user roles
-VALID_ROLES = {"admin", "hr", "employee"}
 
 def _log_tool_call(
     conversation_id: Optional[str],
@@ -44,7 +41,7 @@ def _log_tool_call(
                 "summarization_tool",
                 json.dumps(tool_input),
                 json.dumps(tool_output),
-                datetime.now(timezone.utc),
+                datetime.now(UTC),
             ),
         )
         conn.commit()
@@ -99,7 +96,7 @@ def _generate_summary(query: str, chunks: List[Dict[str, Any]]) -> str:
     # Group by file_name to structure the prompt better
     files = {}
     for c in chunks:
-        fname = c['file_name']
+        fname = c.get('file_name', 'Unknown Document')
         if fname not in files:
             files[fname] = []
         files[fname].append(c)
@@ -130,7 +127,7 @@ def _generate_summary(query: str, chunks: List[Dict[str, Any]]) -> str:
     llm = ChatGroq(
         api_key=settings.groq_api_key,
         model_name=settings.llm_model,
-        temperature=0.2,
+        temperature=0.2, # slightly higher temp for summarization
     )
 
     response = llm.invoke([
@@ -144,27 +141,10 @@ def summarization_tool(
     user_role: str,
     conversation_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    # Validate role inputs - raise for invalid roles
-    if user_role is None:
-        raise ValueError("user_role cannot be None")
-    
-    if user_role not in VALID_ROLES:
-        raise ValueError(f"Invalid role: {user_role}. Must be one of {VALID_ROLES}")
-    
     tool_input = {
         "query": query,
         "user_role": user_role,
     }
-
-    # Handle empty/None query gracefully (don't raise)
-    if not query:
-        result = {
-            "answer": "Query cannot be empty. Please provide a valid query.",
-            "sources": [],
-            "retrieved_chunks": [],
-        }
-        _log_tool_call(conversation_id, tool_input, result)
-        return result
 
     try:
         allowed_categories = get_allowed_categories(user_role)
@@ -206,26 +186,21 @@ def summarization_tool(
         logger.error(f"LLM summarization failed: {exc}")
         answer = "Summarization generation failed. Please try again."
 
-    # Format sources for return payload with field validation
+    # Format sources for return payload
     seen = set()
     unique_sources = []
     for c in chunks:
-        # Validate required fields exist before accessing
-        if "file_name" in c and "category" in c:
-            key = (c["file_name"], c["category"])
-            if key not in seen:
-                seen.add(key)
-                unique_sources.append({
-                    "file_name": c["file_name"],
-                    "category": c["category"]
-                })
-        else:
-            logger.warning(f"Chunk missing required fields: {c.keys()}")
+        fname = c.get("file_name", "Unknown Document")
+        cat = c.get("category", "general")
+        key = (fname, cat)
+        if key not in seen:
+            seen.add(key)
+            unique_sources.append({"file_name": fname, "category": cat})
 
     result = {
         "answer": answer,
         "sources": unique_sources,
-        "retrieved_chunks": [c["chunk_text"] for c in chunks if "chunk_text" in c],
+        "retrieved_chunks": [c["chunk_text"] for c in chunks],
     }
 
     _log_tool_call(

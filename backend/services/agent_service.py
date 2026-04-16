@@ -8,7 +8,7 @@ enforces RBAC at the SQL level before any chunk is returned.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
@@ -148,7 +148,7 @@ class AgentService:
             ).fetchone()
             next_seq   = seq_row.max_seq + 1
             message_id = str(uuid4())
-            now        = datetime.utcnow()
+            now        = datetime.now(UTC)
 
             db.execute(
                 text("""
@@ -208,7 +208,7 @@ class AgentService:
                         "id": str(uuid4()),
                         "qt": query,
                         "rt": answer,
-                        "ts": datetime.utcnow(),
+                        "ts": datetime.now(UTC),
                     },
                 )
             db.commit()
