@@ -7,7 +7,7 @@ Enforces role-based access control and logs to app.tool_logs.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime,UTC
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 import psycopg2
@@ -41,7 +41,7 @@ def _log_tool_call(
                 "recommendation_tool",
                 json.dumps(tool_input),
                 json.dumps(tool_output),
-                datetime.utcnow(),
+                datetime.now(UTC),
             ),
         )
         conn.commit()
