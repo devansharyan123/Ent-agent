@@ -15,13 +15,12 @@ CREATE TABLE IF NOT EXISTS vector_store.document_chunks (
     created_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(document_id, chunk_index)
 );
-look the embeddings 
 -- EMBEDDINGS
 CREATE TABLE IF NOT EXISTS vector_store.rag_embeddings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     chunk_id UUID NOT NULL UNIQUE REFERENCES vector_store.document_chunks(id) ON DELETE CASCADE,
-    embedding VECTOR(768) NOT NULL,
-    embedding_model VARCHAR(100) DEFAULT 'text-embedding-3-small',
+    embedding VECTOR(384) NOT NULL,
+    embedding_model VARCHAR(100) DEFAULT 'sentence-transformers/all-MiniLM-L6-v2',
     created_at TIMESTAMP DEFAULT NOW()
 );
 

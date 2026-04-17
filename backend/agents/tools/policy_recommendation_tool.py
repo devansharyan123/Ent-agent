@@ -127,22 +127,27 @@ def _get_similar_chunks(
         
         cur.execute(
             """
-            SELECT DISTINCT
-                dc.chunk_text,
-                dc.chunk_index,
-                dc.page_number,
-                d.file_name,
-                d.category,
-                d.file_path
-            FROM vector_store.rag_embeddings re
-            JOIN vector_store.document_chunks dc ON re.chunk_id = dc.id
-            JOIN app.documents d ON dc.document_id = d.id
-            WHERE d.category = ANY(%s)
-              AND d.is_active = TRUE
-            ORDER BY re.embedding <=> %s::vector
+            SELECT chunk_text, chunk_index, page_number, file_name, category
+            FROM (
+                SELECT DISTINCT ON (dc.id)
+                    dc.chunk_text,
+                    dc.chunk_index,
+                    dc.page_number,
+                    d.file_name,
+                    d.category,
+                    d.file_path,
+                    re.embedding <=> %s::vector AS distance
+                FROM vector_store.rag_embeddings re
+                JOIN vector_store.document_chunks dc ON re.chunk_id = dc.id
+                JOIN app.documents d ON dc.document_id = d.id
+                WHERE d.category = ANY(%s)
+                  AND d.is_active = TRUE
+                ORDER BY dc.id, distance
+            ) sub
+            ORDER BY distance
             LIMIT %s
             """,
-            (allowed_categories, embedding_array, top_k),
+            (embedding_array, allowed_categories, top_k),
         )
         rows = cur.fetchall()
         cur.close()

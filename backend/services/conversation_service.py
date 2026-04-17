@@ -5,6 +5,7 @@ from backend.agents.tools.policy_retrieval_tool import policy_retrieval_tool
 from backend.agents.tools.summarization_tool import summarization_tool
 from backend.agents.tools.comparison_tool import comparison_tool
 from backend.agents.tools.recommendation_tool import recommendation_tool
+from backend.agents.tools.policy_recommendation_tool import policy_recommendation_tool
 from backend.agents.brain import get_agent
 import uuid
 import logging

@@ -1,8 +1,9 @@
+import os
 import streamlit as st
 import requests
 import html
 
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(page_title="Enterprise AI Assistant", layout="wide")
 
@@ -94,15 +95,15 @@ def _source_key(message: dict) -> str:
 
 
 
-def _render_recommendations(recommendations: list[str]) -> None:
-    """Display policy recommendations in a clean format."""
-    if not recommendations:
-        return
+# def _render_recommendations(recommendations: list[str]) -> None:
+#     """Display policy recommendations in a clean format."""
+#     if not recommendations:
+#         return
     
-    st.markdown("---")
-    st.markdown("**📚 Related Topics:**")
-    for rec in recommendations:
-        st.markdown(f"• {rec}")
+#     st.markdown("---")
+#     st.markdown("**📚 Related Topics:**")
+#     for rec in recommendations:
+#         st.markdown(f"• {rec}")
 
 
 def _load_chunk_tooltip(source: dict) -> str:
@@ -431,8 +432,8 @@ elif st.session_state.user_id:
                 _render_source_tags(cached_sources)
                 
                 # Display recommendations
-                recommendations = msg.get("recommendations", [])
-                _render_recommendations(recommendations)
+                # recommendations = msg.get("recommendations", [])
+                # _render_recommendations(recommendations)
 
         # ---------------- SEND ----------------
         if user_input:
@@ -485,10 +486,10 @@ elif st.session_state.user_id:
                     })
                     st.session_state.message_sources[message_key] = sources
 
-                    with st.chat_message("assistant"):
-                        st.write(answer_text)
-                        _render_source_tags(sources)
-                        _render_recommendations(recommendations)
+                    # with st.chat_message("assistant"):
+                    #     st.write(answer_text)
+                    #     _render_source_tags(sources)
+                    #     _render_recommendations(recommendations)
 
                     st.rerun()
 

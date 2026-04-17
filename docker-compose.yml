@@ -1,0 +1,59 @@
+
+services:
+
+  # ─── PostgreSQL + pgvector ──────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ent_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: team_user
+      POSTGRES_PASSWORD: team1234
+      POSTGRES_DB: project_db
+    ports:
+      - "5433:5432"    # host:5433 → container:5432 (avoids clash with local postgres)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data        # data persists across restarts
+      - ./db_scripts:/docker-entrypoint-initdb.d      # SQL files auto-run on first init only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U team_user -d project_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── FastAPI Backend ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .                     # root so "backend.*" imports work
+      dockerfile: backend/Dockerfile
+    container_name: ent_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy   # wait for DB to be ready before starting
+    env_file:
+      - ./backend/.env                 # loads GROQ_API_KEY, LLM_MODEL etc from existing .env
+    environment:
+      # Override only DATABASE_URL — must point to the postgres container, not localhost
+      DATABASE_URL: postgresql+psycopg2://team_user:team1234@postgres:5432/project_db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./storage:/app/storage       # policy PDFs stay on your machine
+
+  # ─── Streamlit Frontend ─────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ent_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      BACKEND_URL: http://backend:8000   # containers talk by service name, not localhost
+    ports:
+      - "8501:8501"
+
+volumes:
+  postgres_data:    # named volume — survives docker compose stop/start
