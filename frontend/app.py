@@ -7,7 +7,11 @@ BASE_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(page_title="Enterprise AI Assistant", layout="wide")
 
-# ---------------- CUSTOM CSS ----------------
+# ---------------------------------------------------------------------------
+# Custom styling
+# ---------------------------------------------------------------------------
+
+# -------- CUSTOM CSS --------
 st.markdown("""
 <style>
     .stMarkdown table {
@@ -86,6 +90,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
 
 def _source_key(message: dict) -> str:
     question = (message or {}).get("question", "")
@@ -191,7 +198,11 @@ def _render_source_tags(sources: list[dict]) -> None:
         unsafe_allow_html=True,
     )
 
-# ---------------- SESSION ----------------
+# ---------------------------------------------------------------------------
+# Session initialization
+# ---------------------------------------------------------------------------
+
+# -------- SESSION --------
 if "user_id" not in st.session_state:
     st.session_state.user_id = None
 if "role" not in st.session_state:
@@ -207,7 +218,11 @@ if "message_sources" not in st.session_state:
 if "chunk_preview_cache" not in st.session_state:
     st.session_state.chunk_preview_cache = {}
 
-# ---------------- SIDEBAR ----------------
+# ---------------------------------------------------------------------------
+# Sidebar navigation
+# ---------------------------------------------------------------------------
+
+# -------- SIDEBAR --------
 st.sidebar.title("🏢 Enterprise AI Assistant")
 
 if st.session_state.user_id:
@@ -221,7 +236,11 @@ else:
     menu = st.sidebar.radio("Navigation", ["Login", "Register"])
 
 
-# ---------------- REGISTER ----------------
+# ---------------------------------------------------------------------------
+# Register interface
+# ---------------------------------------------------------------------------
+
+# -------- REGISTER --------
 if not st.session_state.user_id and menu == "Register":
     st.title("📝 Create Account")
 
@@ -254,7 +273,11 @@ if not st.session_state.user_id and menu == "Register":
                 st.error(f"Error: {e}")
 
 
-# ---------------- LOGIN ----------------
+# ---------------------------------------------------------------------------
+# Login interface
+# ---------------------------------------------------------------------------
+
+# -------- LOGIN --------
 elif not st.session_state.user_id and menu == "Login":
     st.title("🔐 Login")
 
@@ -291,12 +314,16 @@ elif not st.session_state.user_id and menu == "Login":
                 st.error(f"Error: {e}")
 
 
-# ---------------- MAIN APP ----------------
+# ---------------------------------------------------------------------------
+# Main application interface
+# ---------------------------------------------------------------------------
+
+# -------- MAIN APP --------
 elif st.session_state.user_id:
 
     st.title("🤖 Enterprise Knowledge Assistant")
 
-    # ---------------- ROLE DISPLAY ----------------
+    # Role display
     if st.session_state.role == "Admin":
         st.info("👑 Admin Access")
     elif st.session_state.role == "HR":
@@ -304,7 +331,11 @@ elif st.session_state.user_id:
     else:
         st.info("👤 Employee Access")
 
-    # ---------------- SIDEBAR CONVERSATIONS ----------------
+    # ---------------------------------------------------------------------------
+    # Conversation management
+    # ---------------------------------------------------------------------------
+
+    # -------- SIDEBAR CONVERSATIONS --------
     st.sidebar.subheader("💬 Conversations")
 
     conversations = []
@@ -337,7 +368,11 @@ elif st.session_state.user_id:
                 except Exception as e:
                     st.sidebar.error(f"Delete failed: {e}")
 
-    # ---------------- NEW CONVERSATION ----------------
+    # ---------------------------------------------------------------------------
+    # New conversation
+    # ---------------------------------------------------------------------------
+
+    # -------- NEW CONVERSATION --------
     st.sidebar.markdown("---")
 
     if st.sidebar.button("➕ New Conversation"):
@@ -357,7 +392,11 @@ elif st.session_state.user_id:
         except Exception as e:
             st.sidebar.error(f"Error: {e}")
 
-    # ---------------- CHAT ----------------
+    # ---------------------------------------------------------------------------
+    # Chat interface
+    # ---------------------------------------------------------------------------
+
+    # -------- CHAT --------
     st.subheader("💬 Chat")
 
     if not st.session_state.conversation_id:
@@ -405,7 +444,11 @@ elif st.session_state.user_id:
         with col_input:
             user_input = st.chat_input("Ask something...")
 
-        # ---------------- LOAD HISTORY ----------------
+        # ---------------------------------------------------------------------------
+        # Load conversation history
+        # ---------------------------------------------------------------------------
+
+        # -------- LOAD HISTORY --------
         messages = []
 
         try:
@@ -421,7 +464,11 @@ elif st.session_state.user_id:
         except:
             st.error("Backend not reachable")
 
-        # ---------------- DISPLAY CHAT ----------------
+        # ---------------------------------------------------------------------------
+        # Display messages
+        # ---------------------------------------------------------------------------
+
+        # -------- DISPLAY CHAT --------
         for msg in messages:
             with st.chat_message("user"):
                 st.write(msg.get("question"))
@@ -435,7 +482,11 @@ elif st.session_state.user_id:
                 # recommendations = msg.get("recommendations", [])
                 # _render_recommendations(recommendations)
 
-        # ---------------- SEND ----------------
+        # ---------------------------------------------------------------------------
+        # Send message
+        # ---------------------------------------------------------------------------
+
+        # -------- SEND --------
         if user_input:
             with st.chat_message("user"):
                 st.write(user_input)
