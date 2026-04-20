@@ -11,7 +11,6 @@ st.set_page_config(page_title="Enterprise AI Assistant", layout="wide")
 # Custom styling
 # ---------------------------------------------------------------------------
 
-# -------- CUSTOM CSS --------
 st.markdown("""
 <style>
     .stMarkdown table {
@@ -202,7 +201,7 @@ def _render_source_tags(sources: list[dict]) -> None:
 # Session initialization
 # ---------------------------------------------------------------------------
 
-# -------- SESSION --------
+
 if "user_id" not in st.session_state:
     st.session_state.user_id = None
 if "role" not in st.session_state:
@@ -222,7 +221,6 @@ if "chunk_preview_cache" not in st.session_state:
 # Sidebar navigation
 # ---------------------------------------------------------------------------
 
-# -------- SIDEBAR --------
 st.sidebar.title("🏢 Enterprise AI Assistant")
 
 if st.session_state.user_id:
@@ -240,7 +238,6 @@ else:
 # Register interface
 # ---------------------------------------------------------------------------
 
-# -------- REGISTER --------
 if not st.session_state.user_id and menu == "Register":
     st.title("📝 Create Account")
 
@@ -277,7 +274,6 @@ if not st.session_state.user_id and menu == "Register":
 # Login interface
 # ---------------------------------------------------------------------------
 
-# -------- LOGIN --------
 elif not st.session_state.user_id and menu == "Login":
     st.title("🔐 Login")
 
@@ -318,7 +314,6 @@ elif not st.session_state.user_id and menu == "Login":
 # Main application interface
 # ---------------------------------------------------------------------------
 
-# -------- MAIN APP --------
 elif st.session_state.user_id:
 
     st.title("🤖 Enterprise Knowledge Assistant")
@@ -335,7 +330,6 @@ elif st.session_state.user_id:
     # Conversation management
     # ---------------------------------------------------------------------------
 
-    # -------- SIDEBAR CONVERSATIONS --------
     st.sidebar.subheader("💬 Conversations")
 
     conversations = []
@@ -372,7 +366,6 @@ elif st.session_state.user_id:
     # New conversation
     # ---------------------------------------------------------------------------
 
-    # -------- NEW CONVERSATION --------
     st.sidebar.markdown("---")
 
     if st.sidebar.button("➕ New Conversation"):
@@ -396,7 +389,6 @@ elif st.session_state.user_id:
     # Chat interface
     # ---------------------------------------------------------------------------
 
-    # -------- CHAT --------
     st.subheader("💬 Chat")
 
     if not st.session_state.conversation_id:
@@ -448,7 +440,6 @@ elif st.session_state.user_id:
         # Load conversation history
         # ---------------------------------------------------------------------------
 
-        # -------- LOAD HISTORY --------
         messages = []
 
         try:
@@ -486,7 +477,6 @@ elif st.session_state.user_id:
         # Send message
         # ---------------------------------------------------------------------------
 
-        # -------- SEND --------
         if user_input:
             with st.chat_message("user"):
                 st.write(user_input)

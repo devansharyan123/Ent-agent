@@ -20,6 +20,10 @@ from backend.services.vector_store import get_embedder
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Logging utilities
+# ---------------------------------------------------------------------------
+
 def _log_tool_call(
     conversation_id: Optional[str],
     tool_input: Dict,
@@ -49,6 +53,10 @@ def _log_tool_call(
         conn.close()
     except Exception as exc:  # pragma: no cover
         logger.warning("tool_logs insert failed: %s", exc)
+
+# ---------------------------------------------------------------------------
+# Vector retrieval
+# ---------------------------------------------------------------------------
 
 def _get_document_chunks_for_comparison(query_embedding: List[float], allowed_categories: List[str], top_k: int = 20) -> List[Dict[str, Any]]:
     conn = _get_psycopg2_conn()
@@ -91,6 +99,10 @@ def _get_document_chunks_for_comparison(query_embedding: List[float], allowed_ca
         raise
     finally:
         conn.close()
+
+# ---------------------------------------------------------------------------
+# Comparison generation
+# ---------------------------------------------------------------------------
 
 def _generate_comparison(query: str, chunks: List[Dict[str, Any]]) -> str:
     # Group by file_name to structure the prompt better
@@ -135,6 +147,10 @@ def _generate_comparison(query: str, chunks: List[Dict[str, Any]]) -> str:
         ("human", user_prompt)
     ])
     return response.content
+
+# ---------------------------------------------------------------------------
+# Main tool entry point
+# ---------------------------------------------------------------------------
 
 def comparison_tool(
     query: str,
