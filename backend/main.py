@@ -12,9 +12,17 @@ from backend.database.schemas import UserCreate, UserLogin, AskRequest
 
 app = FastAPI()
 
+# ---------------------------------------------------------------------------
+# Route initialization
+# ---------------------------------------------------------------------------
+
 # Include routes
 app.include_router(conversation.router)
 
+
+# ---------------------------------------------------------------------------
+# Authentication endpoints
+# ---------------------------------------------------------------------------
 
 # -------- REGISTER --------
 @app.post("/register")
@@ -33,7 +41,7 @@ def register(request: UserCreate, db: Session = Depends(get_db)):
     }
 
 
-
+# -------- LOGIN --------
 @app.post("/login")
 async def login(request: Request, db: Session = Depends(get_db)):
     data = await request.json()
@@ -52,6 +60,10 @@ async def login(request: Request, db: Session = Depends(get_db)):
         "role": user.role
     }
 
+
+# ---------------------------------------------------------------------------
+# Agent query endpoints
+# ---------------------------------------------------------------------------
 
 # -------- ASK AGENT --------
 @app.post("/ask")
@@ -83,6 +95,10 @@ def ask_agent(request: AskRequest, db: Session = Depends(get_db)):
     except Exception as e:
         return {"error": str(e)}
 
+
+# ---------------------------------------------------------------------------
+# Conversation and document endpoints
+# ---------------------------------------------------------------------------
 
 # -------- GET CONVERSATION --------
 @app.get("/conversation/{conversation_id}")
