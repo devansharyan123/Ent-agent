@@ -24,9 +24,9 @@ logger = logging.getLogger(__name__)
 class AgentService:
     """Service layer for agent operations."""
 
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Conversation management
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     @staticmethod
     def create_conversation(user_id: UUID, db: Session) -> Dict[str, Any]:
@@ -103,9 +103,9 @@ class AgentService:
             logger.warning("get_conversation_history failed: %s", exc)
             return []
 
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Core query execution
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     @staticmethod
     def execute_query(
@@ -185,9 +185,9 @@ class AgentService:
             logger.error("execute_query failed: %s", exc)
             return {"status": "error", "error": str(exc)}
 
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Caching
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     @staticmethod
     def _cache_query(query: str, answer: str, db: Session) -> None:
@@ -216,9 +216,9 @@ class AgentService:
             db.rollback()
             logger.warning("_cache_query failed: %s", exc)
 
-    # ------------------------------------------------------------------
-    # Document listing (for /documents endpoint)
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # Document listing
+    # ---------------------------------------------------------------------------
 
     @staticmethod
     def get_documents(user_role: str, db: Session = None) -> List[Dict[str, Any]]:
